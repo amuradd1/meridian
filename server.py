@@ -1,62 +1,60 @@
 #!/usr/bin/env python3
 """
-server.py — MERIDIAN FastAPI backend.
-Serves static files and provides /api/data + /api/health endpoints.
+Intelligence Brief Server — Serves intelligence data + static frontend files.
+For Railway deployment: serves everything from one process on $PORT.
 """
-import os
 import json
-from pathlib import Path
+import os
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import FileResponse
 
-app = FastAPI(title="MERIDIAN CPO Intelligence Brief")
+DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
-DATA_FILE = Path("data.json")
-STATIC_DIR = Path("static")
+app = FastAPI()
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+def load_data():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE) as f:
+            return json.load(f)
+    return None
+
+
+@app.get("/api/intelligence")
+async def get_intelligence():
+    data = load_data()
+    if data:
+        return data
+    return {"status": "generating", "message": "Intelligence data is being generated. Please wait..."}
 
 
 @app.get("/api/health")
-def health():
-    return {"status": "ok"}
+async def health():
+    data = load_data()
+    has_real_data = data is not None and data.get("status") == "ok"
+    return {
+        "status": "ok",
+        "has_data": has_real_data,
+        "timestamp": data.get("timestamp") if data else None
+    }
 
 
-@app.get("/api/data")
-def get_data():
-    if DATA_FILE.exists():
-        try:
-            with open(DATA_FILE) as f:
-                return JSONResponse(content=json.load(f))
-        except Exception as e:
-            return JSONResponse(content={"error": str(e)}, status_code=500)
-    return JSONResponse(
-        content={"status": "initializing", "message": "Data generation in progress..."},
-        status_code=202
-    )
-
-
-# Serve static files (CSS, JS)
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-
+# Serve index.html at root
 @app.get("/")
-def index():
-    index_file = STATIC_DIR / "index.html"
-    if index_file.exists():
-        return FileResponse(str(index_file))
-    return {"message": "MERIDIAN CPO Intelligence Brief - Static files not found"}
+async def root():
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 
-@app.get("/{path:path}")
-def catch_all(path: str):
-    # Try to serve from static directory
-    file_path = STATIC_DIR / path
-    if file_path.exists() and file_path.is_file():
-        return FileResponse(str(file_path))
-    # Default to index.html for SPA routing
-    index_file = STATIC_DIR / "index.html"
-    if index_file.exists():
-        return FileResponse(str(index_file))
-    return JSONResponse(content={"error": "Not found"}, status_code=404)
+# Mount static files (CSS, JS, etc.)
+app.mount("/", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

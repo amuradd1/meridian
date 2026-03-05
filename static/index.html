@@ -2,234 +2,232 @@
 <html lang="en" data-theme="dark">
 <head>
 <!--
-   ______                            
-  |  __  |                           
-  | |  | | MERIDIAN
-  | |  | | CPO Intelligence Brief    
-  | |__|_|                           
-  |______| v1.0                      
+   ______                            __
+  / ____/___  ____ ___  ____  __  __/ /____  _____
+ / /   / __ \/ __ `__ \/ __ \/ / / / __/ _ \/ ___/
+/ /___/ /_/ / / / / / / /_/ / /_/ / /_/  __/ /
+\____/\____/_/ /_/ /_/ .___/\__,_/\__/\___/_/
+                    /_/
+        Created with Perplexity Computer
+        https://www.perplexity.ai/computer
 -->
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MERIDIAN — CPO Intelligence Brief</title>
-  <link rel="stylesheet" href="/static/base.css">
-  <link rel="stylesheet" href="/static/style.css">
-  <!-- D3.js for map -->
-  <script src="https://d3js.org/d3.v7.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+
+<!-- Perplexity Computer Attribution — SEO Meta Tags -->
+<meta name="generator" content="Perplexity Computer">
+<meta name="author" content="Perplexity Computer">
+<meta property="og:see_also" content="https://www.perplexity.ai/computer">
+<link rel="author" href="https://www.perplexity.ai/computer">
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Geopolitical & Energy Procurement Intelligence Brief</title>
+<link rel="stylesheet" href="./base.css">
+<link rel="stylesheet" href="./style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
 </head>
 <body>
 
-<div class="loading-overlay" id="loadingOverlay">
-  <div class="loading-spinner"></div>
-  <p class="loading-text">Initializing MERIDIAN Intelligence Brief...</p>
-</div>
-
-<div class="dashboard" id="dashboard" style="display:none">
-
-  <!-- Header -->
+<div class="dashboard">
+  <!-- ─── Header ─── -->
   <header class="header">
     <div class="header-left">
       <div class="logo">
-        <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="14" cy="14" r="13" stroke="#38bdf8" stroke-width="1.5"/>
-          <path d="M14 3 L14 25 M3 14 L25 14" stroke="#38bdf8" stroke-width="1" opacity="0.4"/>
-          <circle cx="14" cy="14" r="4" fill="#38bdf8" opacity="0.8"/>
-          <circle cx="14" cy="14" r="8" stroke="#38bdf8" stroke-width="0.8" stroke-dasharray="2 2" opacity="0.5"/>
+        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Intelligence Brief logo">
+          <rect x="2" y="2" width="28" height="28" rx="6" stroke="currentColor" stroke-width="2"/>
+          <circle cx="16" cy="16" r="8" stroke="currentColor" stroke-width="1.5" fill="none"/>
+          <line x1="16" y1="4" x2="16" y2="28" stroke="currentColor" stroke-width="1.5" opacity="0.5"/>
+          <line x1="4" y1="16" x2="28" y2="16" stroke="currentColor" stroke-width="1.5" opacity="0.5"/>
+          <circle cx="16" cy="16" r="3" fill="currentColor"/>
         </svg>
         <div>
-          <div class="logo-text">MERIDIAN</div>
-          <div class="logo-sub">CPO Intelligence Brief</div>
+          <div class="logo-text">Daily Geopolitical & Energy Procurement Intelligence Brief</div>
         </div>
       </div>
     </div>
     <div class="header-right">
-      <span class="status-tag status-live" id="liveTag">
-        <span class="status-live-dot"></span>
-        LIVE
-      </span>
-      <span class="timestamp-label" id="headerTimestamp">Loading...</span>
-      <button class="btn btn-ghost" id="refreshBtn" title="Refresh data">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="23 4 23 10 17 10"/>
-          <polyline points="1 20 1 14 7 14"/>
-          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-        </svg>
+      <button class="btn" id="refreshBtn" aria-label="Refresh data">
+        <i data-lucide="refresh-cw"></i>
         Refresh
       </button>
-      <button class="btn btn-ghost" id="exportBtn" title="Export PDF">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
+      <button class="btn btn-primary" id="exportPdf" aria-label="Export PDF">
+        <i data-lucide="download"></i>
         Export PDF
       </button>
-      <button class="btn-icon" id="themeToggle" title="Toggle theme">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="5"/>
-          <line x1="12" y1="1" x2="12" y2="3"/>
-          <line x1="12" y1="21" x2="12" y2="23"/>
-          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-          <line x1="1" y1="12" x2="3" y2="12"/>
-          <line x1="21" y1="12" x2="23" y2="12"/>
-          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-        </svg>
+      <button aria-label="Switch to light mode" data-theme-toggle>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
       </button>
     </div>
   </header>
 
-  <!-- Main Content -->
-  <main class="main">
-    <div class="grid-main">
+  <!-- ─── Main Content ─── -->
+  <main class="main" id="mainContent">
+    <div class="grid-main" id="dashboardContent">
 
-      <!-- Executive Summary -->
-      <section class="exec-banner" id="execBanner">
-        <div class="exec-content">
-          <h2>Executive Intelligence Summary</h2>
-          <ul class="exec-bullets" id="execBullets"></ul>
+      <!-- Loading State -->
+      <div id="loadingState">
+        <div class="exec-banner">
+          <div class="exec-content" style="width:100%">
+            <div class="skeleton skeleton-text" style="width:200px"></div>
+            <div class="skeleton skeleton-block" style="width:100%;height:80px"></div>
+          </div>
         </div>
-        <div class="exec-meta">
-          <div class="risk-badge" id="overallRisk"></div>
-          <div class="timestamp-label" id="briefTimestamp"></div>
-          <div class="timestamp-label" id="nextRefresh"></div>
+        <div class="grid-2" style="margin-top:var(--space-4)">
+          <div class="card">
+            <div class="skeleton skeleton-text" style="width:150px"></div>
+            <div class="skeleton skeleton-block"></div>
+            <div class="skeleton skeleton-block"></div>
+          </div>
+          <div class="card">
+            <div class="skeleton skeleton-text" style="width:150px"></div>
+            <div class="skeleton skeleton-block"></div>
+            <div class="skeleton skeleton-block"></div>
+          </div>
         </div>
-      </section>
+      </div>
 
-      <!-- Row 1: Commodities + Top Stories -->
-      <div class="grid-2">
+      <!-- Dashboard Content (hidden until loaded) -->
+      <div id="dashboardLive" style="display:none">
 
-        <!-- Energy & Commodity Markets -->
+        <!-- 1. Executive Summary Banner -->
+        <div class="exec-banner" id="execBanner">
+          <div class="exec-content">
+            <h2>Executive Summary</h2>
+            <p class="exec-summary" id="execSummary"></p>
+          </div>
+          <div class="exec-meta">
+            <div class="risk-badge" id="riskBadge">
+              <span class="risk-dot"></span>
+              <span id="riskLabel">—</span>
+            </div>
+            <div class="timestamp-label" id="timestampLabel">—</div>
+            <div class="timestamp-label" id="nextRefreshLabel" style="font-size:0.625rem">—</div>
+          </div>
+        </div>
+
+        <!-- 2. Energy Markets + Geopolitical Risk (side by side) -->
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Energy Markets</span>
+              <i data-lucide="trending-up" class="card-icon"></i>
+            </div>
+            <table class="commodity-table">
+              <thead>
+                <tr>
+                  <th>Commodity</th>
+                  <th>Price</th>
+                  <th>24h</th>
+                  <th>7d</th>
+                  <th>30d Trend</th>
+                  <th>Driver</th>
+                </tr>
+              </thead>
+              <tbody id="commodityBody"></tbody>
+            </table>
+            <div class="analyst-box">
+              <div class="analyst-label">Analyst Outlook (EIA STEO)</div>
+              <div class="analyst-text" id="analystOutlook">—</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Geopolitical Risk Monitor</span>
+              <i data-lucide="shield-alert" class="card-icon"></i>
+            </div>
+            <div id="newsStories"></div>
+          </div>
+        </div>
+
+        <!-- 3. Timeline + Risk Heatmap -->
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Conflict Escalation Timeline (7 Days)</span>
+              <i data-lucide="git-branch" class="card-icon"></i>
+            </div>
+            <div class="timeline" id="timeline"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Regional Risk Heatmap</span>
+              <i data-lucide="map" class="card-icon"></i>
+            </div>
+            <div class="heatmap-grid" id="heatmap"></div>
+          </div>
+        </div>
+
+        <!-- 3b. Global Supply Chain Map -->
         <div class="card">
           <div class="card-header">
-            <span class="card-title">Energy &amp; Commodity Markets</span>
-            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-            </svg>
+            <span class="card-title">Global Supply Chain &amp; Risk Map</span>
+            <i data-lucide="globe" class="card-icon"></i>
           </div>
-          <table class="commodity-table" id="commodityTable">
-            <thead>
-              <tr>
-                <th>Commodity</th>
-                <th>Price</th>
-                <th>24h</th>
-                <th>7d</th>
-                <th>Trend</th>
-              </tr>
-            </thead>
-            <tbody id="commodityBody"></tbody>
-          </table>
+          <div class="map-container" id="supplyChainMap"></div>
         </div>
 
-        <!-- Geopolitical Risk Monitor -->
+        <!-- 4. Shipping & Supply Chain -->
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Chokepoint Status</span>
+              <i data-lucide="ship" class="card-icon"></i>
+            </div>
+            <div class="chokepoint-grid" id="chokepoints"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Shipping Alerts</span>
+              <i data-lucide="alert-triangle" class="card-icon"></i>
+            </div>
+            <div id="shippingAlerts"></div>
+            <div class="analyst-box" style="margin-top: var(--space-4)">
+              <div class="analyst-label">Commodity Drivers</div>
+              <div class="analyst-text" id="commodityDrivers">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. Procurement Category Exposure -->
         <div class="card">
           <div class="card-header">
-            <span class="card-title">Geopolitical Risk Monitor</span>
-            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="8" x2="12" y2="12"/>
-              <line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
+            <span class="card-title">Procurement Category Exposure Matrix</span>
+            <i data-lucide="package" class="card-icon"></i>
           </div>
-          <div id="storiesList"></div>
+          <div style="overflow-x:auto">
+            <table class="procurement-table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Energy Sensitivity</th>
+                  <th>Supply Route Exposure</th>
+                  <th>Risk Rating</th>
+                  <th>Suggested Mitigation</th>
+                </tr>
+              </thead>
+              <tbody id="procurementBody"></tbody>
+            </table>
+          </div>
         </div>
 
       </div>
 
-      <!-- Row 2: Map -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Global Supply Chain Map</span>
-          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/>
-            <line x1="9" y1="3" x2="9" y2="18"/>
-            <line x1="15" y1="6" x2="15" y2="21"/>
-          </svg>
-        </div>
-        <div class="map-container" id="supplyChainMap"></div>
-      </div>
-
-      <!-- Row 3: Chokepoints + Timeline -->
-      <div class="grid-2">
-
-        <!-- Chokepoint Status -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">Chokepoint Status</span>
-            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
-          </div>
-          <div class="chokepoint-list" id="chokepointList"></div>
-        </div>
-
-        <!-- Conflict Timeline -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">Conflict &amp; Event Timeline</span>
-            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-              <line x1="16" y1="2" x2="16" y2="6"/>
-              <line x1="8" y1="2" x2="8" y2="6"/>
-              <line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
-          </div>
-          <div class="timeline" id="eventTimeline"></div>
-        </div>
-
-      </div>
-
-      <!-- Row 4: Procurement Category Risk -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Procurement Category Risk Assessment</span>
-          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-            <line x1="8" y1="21" x2="16" y2="21"/>
-            <line x1="12" y1="17" x2="12" y2="21"/>
-          </svg>
-        </div>
-        <div class="category-grid" id="categoryGrid"></div>
-      </div>
-
-      <!-- Row 5: Risk Heatmap + Analyst Outlook -->
-      <div class="grid-2">
-
-        <!-- Regional Risk Heatmap -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">Regional Risk Heatmap</span>
-            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-            </svg>
-          </div>
-          <div class="heatmap-grid" id="riskHeatmap"></div>
-        </div>
-
-        <!-- Analyst Outlook -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">Analyst Outlook</span>
-            <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
-              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
-            </svg>
-          </div>
-          <div class="outlook-content">
-            <div class="outlook-drivers" id="commodityDrivers"></div>
-            <div class="outlook-text" id="analystOutlook"></div>
-          </div>
-        </div>
-
+      <!-- Footer -->
+      <div class="dashboard-footer">
+        <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a>
       </div>
 
     </div>
   </main>
 </div>
 
-<script src="/static/map.js"></script>
-<script src="/static/app.js"></script>
+<script src="./map.js"></script>
+<script src="./app.js"></script>
 </body>
 </html>
