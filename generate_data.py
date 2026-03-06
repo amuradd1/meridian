@@ -295,20 +295,23 @@ async def fetch_chokepoint_transit():
             pct_change_7d = ((avg_7d - baseline_avg) / baseline_avg * 100) if baseline_avg > 0 else 0
 
             # Derive status from transit volume drops
+            # NOTE: No chokepoint is labelled "CLOSED" — that implies a formal
+            # blockage (e.g. Ever Given 2021). Even a 50%+ volume drop usually
+            # means heavy voluntary rerouting, not physical closure.
             def derive_status(pct):
                 if pct <= -50:
-                    return "CLOSED", 168
+                    return "SEVERELY DISRUPTED", 168
                 elif pct <= -25:
-                    return "RESTRICTED", max(24, int(abs(pct) * 1.5))
+                    return "DISRUPTED", max(24, int(abs(pct) * 1.5))
                 elif pct <= -15:
-                    return "RESTRICTED", max(6, int(abs(pct) * 0.8))
+                    return "DISRUPTED", max(6, int(abs(pct) * 0.8))
                 else:
                     return "OPEN", 0
 
             status_7d, delay_7d = derive_status(pct_change_7d)
             status_latest, delay_latest = derive_status(pct_change)
 
-            STATUS_ORDER = {"OPEN": 0, "RESTRICTED": 1, "CLOSED": 2}
+            STATUS_ORDER = {"OPEN": 0, "DISRUPTED": 1, "SEVERELY DISRUPTED": 2}
             if STATUS_ORDER.get(status_latest, 0) > STATUS_ORDER.get(status_7d, 0):
                 status = status_latest
                 delay_hours = delay_latest
@@ -317,20 +320,20 @@ async def fetch_chokepoint_transit():
                 delay_hours = delay_7d
 
             # Override with active disruption alerts from PortWatch
-            # RED alert = at minimum RESTRICTED, ORANGE = at minimum RESTRICTED
+            # RED alert = at minimum DISRUPTED, ORANGE = at minimum DISRUPTED
             alert_info = active_alerts.get(port_id)
             if alert_info:
                 alert_level = alert_info["alert"]
-                if alert_level == "RED" and STATUS_ORDER.get(status, 0) < STATUS_ORDER.get("RESTRICTED", 1):
-                    status = "RESTRICTED"
-                    print(f"    {display}: Elevated to RESTRICTED (RED alert active: {alert_info['event']})")
-                elif alert_level == "ORANGE" and STATUS_ORDER.get(status, 0) < STATUS_ORDER.get("RESTRICTED", 1):
-                    status = "RESTRICTED"
+                if alert_level == "RED" and STATUS_ORDER.get(status, 0) < STATUS_ORDER.get("DISRUPTED", 1):
+                    status = "DISRUPTED"
+                    print(f"    {display}: Elevated to DISRUPTED (RED alert active: {alert_info['event']})")
+                elif alert_level == "ORANGE" and STATUS_ORDER.get(status, 0) < STATUS_ORDER.get("DISRUPTED", 1):
+                    status = "DISRUPTED"
 
             # ── Rerouting delay model ──
-            # When a chokepoint is RESTRICTED or CLOSED, ships reroute via Cape of Good Hope
-            # (or Lombok/Sunda for Malacca). The real-world delay is the extra transit days
-            # from rerouting — NOT derived from volume drop magnitude.
+            # When a chokepoint is DISRUPTED or SEVERELY DISRUPTED, ships reroute via
+            # Cape of Good Hope (or Lombok/Sunda for Malacca). The real-world delay is
+            # the extra transit days from rerouting — NOT derived from volume drop magnitude.
             # Volume may look "normal" simply because ships are avoiding the chokepoint entirely.
             reroute_active = False
             reroute_days_low = cp_info.get("reroute_days_low", 0)
@@ -338,7 +341,7 @@ async def fetch_chokepoint_transit():
             reroute_via = cp_info.get("reroute_via", "")
             reroute_note = cp_info.get("reroute_note", "")
 
-            if status in ("RESTRICTED", "CLOSED"):
+            if status in ("DISRUPTED", "SEVERELY DISRUPTED"):
                 reroute_active = True
                 # Use midpoint of rerouting range, converted to hours
                 delay_hours = int(((reroute_days_low + reroute_days_high) / 2) * 24)
@@ -596,10 +599,10 @@ Produce ONLY valid JSON (no markdown fences):
 {cat_list}
   ],
   "chokepoint_status": [
-    {{"name": "Strait of Hormuz", "status": "OPEN/RESTRICTED/CLOSED", "delay_hours": 0, "detail": "MAX 10 words"}},
-    {{"name": "Bab el-Mandeb / Red Sea", "status": "OPEN/RESTRICTED/CLOSED", "delay_hours": 0, "detail": "MAX 10 words"}},
-    {{"name": "Suez Canal", "status": "OPEN/RESTRICTED/CLOSED", "delay_hours": 0, "detail": "MAX 10 words"}},
-    {{"name": "Malacca Strait", "status": "OPEN/RESTRICTED/CLOSED", "delay_hours": 0, "detail": "MAX 10 words"}}
+    {{"name": "Strait of Hormuz", "status": "OPEN/DISRUPTED/SEVERELY DISRUPTED", "delay_hours": 0, "detail": "MAX 10 words"}},
+    {{"name": "Bab el-Mandeb / Red Sea", "status": "OPEN/DISRUPTED/SEVERELY DISRUPTED", "delay_hours": 0, "detail": "MAX 10 words"}},
+    {{"name": "Suez Canal", "status": "OPEN/DISRUPTED/SEVERELY DISRUPTED", "delay_hours": 0, "detail": "MAX 10 words"}},
+    {{"name": "Malacca Strait", "status": "OPEN/DISRUPTED/SEVERELY DISRUPTED", "delay_hours": 0, "detail": "MAX 10 words"}}
   ],
   "top_stories": [
     {{"headline": "...", "source": "...", "summary": "MAX 1 sentence framed through tobacco procurement impact", "relevance": "HIGH/MEDIUM/LOW", "news_idx": <integer matching idx from NEWS HEADLINES>}}
@@ -746,7 +749,7 @@ WRITING QUALITY:
     kpi["categories_at_high_risk"] = high_risk_count
 
     chokes = result.get("chokepoint_status", [])
-    disrupted_count = sum(1 for cp in chokes if cp.get("status", "OPEN").upper() in ("RESTRICTED", "CLOSED"))
+    disrupted_count = sum(1 for cp in chokes if cp.get("status", "OPEN").upper() in ("DISRUPTED", "SEVERELY DISRUPTED"))
     kpi["active_chokepoint_disruptions"] = disrupted_count
 
     delays = [cp.get("delay_hours", 0) for cp in chokes if cp.get("delay_hours", 0) > 0]

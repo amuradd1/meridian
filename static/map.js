@@ -73,7 +73,7 @@ function renderSupplyChainMap(chokeStatus) {
   container.innerHTML = "";
 
   var width = container.clientWidth || 600;
-  var height = Math.max(Math.min(width * 0.75, 500), 300);
+  var height = Math.max(Math.min(width * 0.8, 550), 320);
 
   if (width < 100) {
     setTimeout(function() { renderSupplyChainMap(chokeStatus); }, 200);
@@ -88,10 +88,11 @@ function renderSupplyChainMap(chokeStatus) {
     .style("height", "auto")
     .style("background", "transparent");
 
-  // Projection — widened to include Cape of Good Hope and western Med
+  // Projection — covers Suez (30.5N) to Cape (-34.4S), Malacca (101.5E) to W.Med (-10W)
+  // Center shifted north to keep Suez labels in frame; scale reduced for full coverage
   var projection = d3.geoMercator()
-    .center([50, 2])
-    .scale(width / 3.6)
+    .center([48, 6])
+    .scale(width / 4.2)
     .translate([width / 2, height / 2]);
 
   var path = d3.geoPath().projection(projection);
@@ -111,13 +112,13 @@ function renderSupplyChainMap(chokeStatus) {
     });
   }
 
-  // Identify disrupted chokepoints (RESTRICTED or CLOSED)
+  // Identify disrupted chokepoints (DISRUPTED or SEVERELY DISRUPTED)
   var disruptedChokepoints = {};
   CHOKEPOINTS.forEach(function(cp) {
     if (cp.isReroute) { return; }
     var status = chokeLookup[cp.name];
     var level = status ? status.status.toLowerCase() : "open";
-    if (level === "restricted" || level === "closed") {
+    if (level === "disrupted" || level === "severely disrupted") {
       disruptedChokepoints[cp.name] = true;
     }
   });
@@ -305,8 +306,8 @@ function renderSupplyChainMap(chokeStatus) {
       if (cp.isReroute) {
         color = "#38bdf8";
       } else {
-        color = statusLevel === "restricted" ? "var(--color-risk-medium)" :
-                statusLevel === "closed" ? "var(--color-risk-high)" : "var(--color-risk-low)";
+        color = (statusLevel === "disrupted") ? "var(--color-risk-medium)" :
+                (statusLevel === "severely disrupted") ? "var(--color-risk-high)" : "var(--color-risk-low)";
       }
 
       // Pulsing outer ring for disrupted chokepoints

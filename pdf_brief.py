@@ -245,7 +245,7 @@ def generate_pdf(data: dict) -> bytes:
     choke_rows = [choke_header]
     for cp in intel.get("chokepoint_status", []):
         status = cp.get("status", "OPEN")
-        sc = risk_color({"OPEN":"L","RESTRICTED":"M","CLOSED":"H"}.get(status, "M"))
+        sc = risk_color({"OPEN":"L","DISRUPTED":"M","SEVERELY DISRUPTED":"H"}.get(status, "M"))
         delay_str = f'+{cp.get("delay_hours", 0)}h' if cp.get("delay_hours", 0) > 0 else "—"
         choke_rows.append([
             Paragraph(cp.get("name", ""), styles["table_cell_bold"]),

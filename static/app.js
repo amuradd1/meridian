@@ -291,7 +291,7 @@ function renderChokepoints(chokepoints) {
 
   var html = '';
   chokepoints.forEach(function(cp, idx) {
-    var statusLower = (cp.status || 'open').toLowerCase();
+    var statusLower = (cp.status || 'open').toLowerCase().replace(/\s+/g, '-');
     var statusClass = 'status-' + statusLower;
     var hasTransit = cp.transit_latest != null;
     var pctChange = cp.transit_pct_change || 0;
