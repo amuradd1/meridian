@@ -34,6 +34,7 @@
 <div class="dashboard">
   <!-- ─── Header ─── -->
   <header class="header">
+    <div class="header-inner">
     <div class="header-left">
       <div class="logo">
         <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Intelligence Brief logo">
@@ -61,10 +62,12 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
       </button>
     </div>
+    </div>
   </header>
 
   <!-- ─── Main Content ─── -->
   <main class="main" id="mainContent">
+    <div class="main-inner">
     <div class="grid-main" id="dashboardContent">
 
       <!-- Loading State -->
@@ -134,7 +137,7 @@
 
           <div class="card">
             <div class="card-header">
-              <span class="card-title">Global Supply Chain &amp; Risk Map</span>
+              <span class="card-title">Chokepoint Corridor Map</span>
               <i data-lucide="globe" class="card-icon"></i>
             </div>
             <div class="map-container" id="supplyChainMap"></div>
@@ -214,6 +217,15 @@
         <!-- 7. COGS Outlook — small full-width bar -->
         <div class="cogs-outlook" id="cogsOutlook"></div>
 
+        <!-- 8. Sources & Methodology -->
+        <div class="sources-section" id="sourcesSection">
+          <button class="sources-toggle" id="sourcesToggle" aria-expanded="false">
+            <span>Sources & Methodology</span>
+            <svg class="sources-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="sources-body" id="sourcesBody"></div>
+        </div>
+
       </div>
 
       <!-- Footer -->
@@ -221,6 +233,7 @@
         <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a>
       </div>
 
+    </div>
     </div>
   </main>
 </div>
