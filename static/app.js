@@ -343,6 +343,42 @@ function renderCOGSOutlook(text) {
   '</div>';
 }
 
+function renderAnalystSentiment(sentiment) {
+  var container = document.getElementById('analystSentiment');
+  if (!container) { return; }
+  if (!sentiment) {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = '';
+  var overall = (sentiment.overall || 'NEUTRAL').toUpperCase();
+  var sentimentClass = overall === 'BEARISH' ? 'high' : (overall === 'BULLISH' ? 'low' : 'medium');
+  var sentimentIcon = overall === 'BEARISH' ? '▼' : (overall === 'BULLISH' ? '▲' : '●');
+  var items = [
+    { label: 'Energy', text: sentiment.energy_outlook || '' },
+    { label: 'Supply Chain', text: sentiment.supply_chain_outlook || '' },
+    { label: 'Procurement', text: sentiment.procurement_outlook || '' },
+  ];
+  var html = '<div class="card-header">' +
+    '<span class="card-title">Analyst Forecast & Sentiment</span>' +
+    '<span class="risk-badge ' + sentimentClass + '" style="font-size:var(--text-xs);padding:var(--space-1) var(--space-3)">' +
+      '<span class="kpi-trend trend-' + (overall === 'BEARISH' ? 'up' : (overall === 'BULLISH' ? 'down' : 'stable')) + '">' + sentimentIcon + '</span> ' +
+      overall +
+    '</span>' +
+  '</div>';
+  html += '<div class="sentiment-items">';
+  items.forEach(function(item) {
+    if (item.text) {
+      html += '<div class="sentiment-item">' +
+        '<span class="sentiment-label">' + item.label + '</span>' +
+        '<span class="sentiment-text">' + item.text + '</span>' +
+      '</div>';
+    }
+  });
+  html += '</div>';
+  container.innerHTML = html;
+}
+
 function renderSources(timestamp) {
   var body = document.getElementById('sourcesBody');
   if (!body) { return; }
@@ -356,7 +392,7 @@ function renderSources(timestamp) {
   var html = '<div class="sources-grid" style="padding-top:var(--space-3)">' +
     '<div class="source-item"><span class="source-item-label">Commodity Prices:</span> <a href="https://finance.yahoo.com" target="_blank" rel="noopener noreferrer">Yahoo Finance</a> (delayed)</div>' +
     '<div class="source-item"><span class="source-item-label">News Headlines:</span> <a href="https://news.google.com" target="_blank" rel="noopener noreferrer">Google News RSS</a></div>' +
-    '<div class="source-item"><span class="source-item-label">LNG Estimates:</span> TTF proxy &times; 1.15 multiplier for JKM</div>' +
+    '<div class="source-item"><span class="source-item-label">LNG JKM:</span> <a href="https://uk.investing.com/commodities/lng-japan-korea-marker-platts-futures-historical-data" target="_blank" rel="noopener noreferrer">Investing.com (Platts JKM Futures)</a></div>' +
     '<div class="source-item"><span class="source-item-label">Freight Rates:</span> LLM-estimated based on market data and news context (indicative only)</div>' +
     '<div class="source-item"><span class="source-item-label">Intelligence Analysis:</span> <a href="https://www.anthropic.com" target="_blank" rel="noopener noreferrer">Claude AI (Anthropic)</a></div>' +
     '<div class="source-item"><span class="source-item-label">Map Data:</span> <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener noreferrer">Natural Earth</a> via world-atlas</div>' +
@@ -434,6 +470,7 @@ function fetchIntelligence() {
       renderFreightRates(intel.container_freight_rates);
       renderProcurement(intel.procurement_categories);
       renderCOGSOutlook(intel.cogs_outlook);
+      renderAnalystSentiment(intel.analyst_sentiment);
       renderSources(data.timestamp);
 
       // Show dashboard first

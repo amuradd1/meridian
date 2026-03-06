@@ -208,7 +208,7 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   display: grid;
   gap: var(--space-4);
   grid-template-columns: 1fr 1fr;
-  align-items: stretch;
+  align-items: start;
 }
 
 .grid-3 {
@@ -294,7 +294,6 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   font-size: var(--text-sm);
   line-height: 1.7;
   color: var(--color-text);
-  max-width: 80ch;
 }
 
 .exec-bullets {
@@ -971,6 +970,37 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
 }
 
 /* ─── Supply Chain Map ─── */
+
+/* ─── Analyst Sentiment ─── */
+.sentiment-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sentiment-item {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+}
+
+.sentiment-label {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 90px;
+}
+
+.sentiment-text {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  line-height: 1.5;
+}
+
 .map-container {
   position: relative;
   min-height: 280px;

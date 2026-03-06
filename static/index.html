@@ -113,7 +113,7 @@
           </div>
         </div>
 
-        <!-- 3. Energy Markets (left) | Global Risk Map (right) -->
+        <!-- 3. Energy Markets (left) | Container Freight Rates (right) -->
         <div class="grid-2">
           <div class="card">
             <div class="card-header">
@@ -136,25 +136,6 @@
 
           <div class="card">
             <div class="card-header">
-              <span class="card-title">Chokepoint Corridor Map</span>
-              <i data-lucide="globe" class="card-icon"></i>
-            </div>
-            <div class="map-container" id="supplyChainMap"></div>
-          </div>
-        </div>
-
-        <!-- 4. Chokepoint Status (left) | Container Freight Rates (right) -->
-        <div class="grid-2">
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">Chokepoint Status</span>
-              <i data-lucide="ship" class="card-icon"></i>
-            </div>
-            <div class="chokepoint-grid" id="chokepoints"></div>
-          </div>
-
-          <div class="card">
-            <div class="card-header">
               <span class="card-title">Container Freight Rates</span>
               <i data-lucide="truck" class="card-icon"></i>
             </div>
@@ -169,6 +150,25 @@
               </thead>
               <tbody id="freightBody"></tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- 4. Chokepoint Corridor Map (left) | Chokepoint Status (right) -->
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Chokepoint Corridor Map</span>
+              <i data-lucide="globe" class="card-icon"></i>
+            </div>
+            <div class="map-container" id="supplyChainMap"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Chokepoint Status</span>
+              <i data-lucide="ship" class="card-icon"></i>
+            </div>
+            <div class="chokepoint-grid" id="chokepoints"></div>
           </div>
         </div>
 
@@ -204,7 +204,7 @@
                   <th>Category</th>
                   <th>Energy Sensitivity</th>
                   <th>Supply Route Exposure</th>
-                  <th>Risk Rating</th>
+                  <th><span class="tooltip-trigger">Overall Risk<span class="tooltip-content">Composite rating factoring energy sensitivity, supply route exposure, single-source dependency, and geopolitical disruption risk. A category can have medium energy sensitivity but high overall risk due to concentrated sourcing or chokepoint transit dependency.</span></span></th>
                   <th>Suggested Mitigation</th>
                 </tr>
               </thead>
@@ -216,7 +216,10 @@
         <!-- 7. COGS Outlook — small full-width bar -->
         <div class="cogs-outlook" id="cogsOutlook"></div>
 
-        <!-- 8. Sources & Methodology -->
+        <!-- 8. Analyst Forecast & Sentiment -->
+        <div class="card" id="analystSentiment" style="display:none"></div>
+
+        <!-- 9. Sources & Methodology -->
         <div class="sources-section" id="sourcesSection">
           <button class="sources-toggle" id="sourcesToggle" aria-expanded="false">
             <span>Sources & Methodology</span>

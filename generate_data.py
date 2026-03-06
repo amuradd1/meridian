@@ -66,6 +66,76 @@ async def fetch_yahoo(http, symbol, name, unit):
         return None
 
 
+async def fetch_jkm_investing(http):
+    """Fetch live JKM LNG price from investing.com."""
+    import re
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        }
+        r = await http.get(
+            "https://uk.investing.com/commodities/lng-japan-korea-marker-platts-futures",
+            headers=headers,
+        )
+        if r.status_code != 200:
+            print(f"  JKM investing.com status: {r.status_code}")
+            return None
+
+        text = r.text
+        m_last = re.search(r'data-test="instrument-price-last">([0-9.]+)', text)
+        if not m_last:
+            print("  JKM: could not find price on investing.com")
+            return None
+
+        current = float(m_last.group(1))
+
+        # Extract change %
+        m_pct = re.search(r'data-test="instrument-price-change-percent">\(?([+-]?[0-9.]+)', text)
+        change_pct = float(m_pct.group(1)) if m_pct else 0.0
+
+        # Fetch historical data page for sparkline history
+        r2 = await http.get(
+            "https://uk.investing.com/commodities/lng-japan-korea-marker-platts-futures-historical-data",
+            headers=headers,
+        )
+        history = []
+        if r2.status_code == 200:
+            # Extract close prices from historical table (range 5-80 for JKM)
+            all_prices = re.findall(r'>([0-9]{1,2}\.[0-9]{2,3})<', r2.text)
+            # Filter to plausible JKM range and deduplicate consecutive entries
+            plausible = [float(p) for p in all_prices if 5.0 <= float(p) <= 80.0]
+            # Take every 4th value (close, open, high, low pattern) — close is first
+            if len(plausible) >= 8:
+                closes = plausible[::4][:20]  # max ~20 days
+                history = list(reversed(closes))  # oldest to newest
+
+        # Compute 24h change from first two history entries or use page change
+        change_24h = change_pct
+        # Compute 7d change from history
+        change_7d = 0.0
+        if len(history) >= 6:
+            week_ago = history[-6]
+            if week_ago > 0:
+                change_7d = round(((current - week_ago) / week_ago) * 100, 2)
+        elif len(history) >= 2:
+            change_7d = round(((current - history[0]) / history[0]) * 100, 2)
+
+        if not history:
+            history = [current]
+
+        return {
+            "name": "LNG Asia (JKM)",
+            "price": round(current, 2),
+            "unit": "$/MMBtu",
+            "change_24h": round(change_24h, 2),
+            "change_7d": round(change_7d, 2),
+            "history": [round(h, 2) for h in history],
+        }
+    except Exception as e:
+        print(f"  JKM investing.com error: {e}")
+        return None
+
+
 async def fetch_commodities():
     symbols = [
         ("BZ=F", "Brent Crude", "$/bbl"),
@@ -74,18 +144,27 @@ async def fetch_commodities():
         ("NG=F", "Henry Hub Nat Gas", "$/MMBtu"),
         ("BDRY", "Dry Bulk Shipping (BDRY)", "Index"),
     ]
-    async with httpx.AsyncClient(timeout=15) as http:
-        tasks = [fetch_yahoo(http, s, n, u) for s, n, u in symbols]
-        results = await asyncio.gather(*tasks)
-    commodities = [r for r in results if r]
-    ttf = next((c for c in commodities if "TTF" in c["name"]), None)
-    if ttf:
-        jkm = dict(ttf)
-        jkm["name"] = "LNG Asia (JKM Est.)"
-        jkm["unit"] = "$/MMBtu"
-        jkm["price"] = round(ttf["price"] * 1.15, 2)
-        jkm["history"] = [round(p * 1.15, 2) for p in ttf["history"]]
+    async with httpx.AsyncClient(timeout=20, follow_redirects=True) as http:
+        yahoo_tasks = [fetch_yahoo(http, s, n, u) for s, n, u in symbols]
+        jkm_task = fetch_jkm_investing(http)
+        results = await asyncio.gather(*yahoo_tasks, jkm_task)
+
+    # Yahoo results + JKM
+    commodities = [r for r in results[:-1] if r]
+    jkm = results[-1]
+    if jkm:
         commodities.append(jkm)
+    else:
+        # Fallback: estimate from TTF if investing.com fails
+        print("  JKM: falling back to TTF estimate")
+        ttf = next((c for c in commodities if "TTF" in c["name"]), None)
+        if ttf:
+            jkm_fb = dict(ttf)
+            jkm_fb["name"] = "LNG Asia (JKM Est.)"
+            jkm_fb["unit"] = "$/MMBtu"
+            jkm_fb["price"] = round(ttf["price"] * 1.15, 2)
+            jkm_fb["history"] = [round(p * 1.15, 2) for p in ttf["history"]]
+            commodities.append(jkm_fb)
     return commodities
 
 
@@ -203,7 +282,13 @@ Produce ONLY valid JSON (no markdown fences):
     {{"region": "Red Sea", "risk": "HIGH/MEDIUM/LOW", "detail": "MAX 8 words"}},
     {{"region": "South China Sea", "risk": "HIGH/MEDIUM/LOW", "detail": "MAX 8 words"}},
     {{"region": "Black Sea", "risk": "HIGH/MEDIUM/LOW", "detail": "MAX 8 words"}}
-  ]
+  ],
+  "analyst_sentiment": {{
+    "overall": "BEARISH or NEUTRAL or BULLISH",
+    "energy_outlook": "1 sentence: analyst consensus on crude/LNG price direction over 4-8 weeks.",
+    "supply_chain_outlook": "1 sentence: shipping and logistics normalisation or further disruption outlook.",
+    "procurement_outlook": "1 sentence: expected impact on tobacco industry input costs and availability."
+  }}
 }}
 
 RULES:
@@ -219,6 +304,7 @@ RULES:
 - Heatmap detail: MAX 8 words per region.
 - Chokepoint detail: MAX 10 words each.
 - Procurement rationale: MAX 1 sentence. suggested_mitigation: 1-2 sentences with specific strategic detail.
+- Analyst sentiment: provide a forward-looking outlook based on all available data. This is the analyst's professional assessment of market direction. 'overall' must be BEARISH, NEUTRAL, or BULLISH. Each outlook sentence must be informational, not directive.
 
 WRITING QUALITY:
 - Write complete, grammatically correct sentences — never telegraph-style shorthand.

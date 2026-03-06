@@ -7,7 +7,7 @@ import json
 import os
 from datetime import datetime
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
@@ -66,8 +66,18 @@ async def root():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 
-# Mount static files (CSS, JS, etc.)
-app.mount("/", StaticFiles(directory=STATIC_DIR), name="static")
+# Mount static files under /static path to avoid route conflicts
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+# Catch-all: serve static files for any remaining paths (CSS, JS loaded from ./)
+@app.get("/{file_path:path}")
+async def serve_static(file_path: str):
+    full_path = os.path.join(STATIC_DIR, file_path)
+    if os.path.isfile(full_path):
+        return FileResponse(full_path)
+    # Fallback to index.html for SPA-style routing
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 
 if __name__ == "__main__":
