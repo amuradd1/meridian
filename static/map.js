@@ -73,7 +73,7 @@ function renderSupplyChainMap(chokeStatus) {
   container.innerHTML = "";
 
   var width = container.clientWidth || 600;
-  var height = Math.max(Math.min(width * 0.8, 550), 320);
+  var height = Math.max(Math.min(width * 0.5, 420), 280);
 
   if (width < 100) {
     setTimeout(function() { renderSupplyChainMap(chokeStatus); }, 200);
@@ -88,10 +88,10 @@ function renderSupplyChainMap(chokeStatus) {
     .style("height", "auto")
     .style("background", "transparent");
 
-  // Projection — compact view: all 4 chokepoints + Cape route visible in 280px height
+  // Projection — shifted south & west to show Cape of Good Hope reroute fully
   var projection = d3.geoMercator()
-    .center([52, 8])
-    .scale(width / 5.5)
+    .center([45, 0])
+    .scale(width / 6)
     .translate([width / 2, height / 2]);
 
   var path = d3.geoPath().projection(projection);

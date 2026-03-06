@@ -558,7 +558,6 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-4);
   min-width: 0;
-  overflow: hidden;
 }
 
 .chokepoint-header {
@@ -758,6 +757,13 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
 
 .transit-spark-wrap canvas {
   display: block;
+  width: 100px;
+  height: 28px;
+  max-width: none;
+}
+
+.sparkline-cell canvas {
+  max-width: none;
 }
 
 /* ─── Timeline ─── */
@@ -1013,6 +1019,23 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
 @media (max-width: 1200px) {
   .grid-3 { grid-template-columns: 1fr 1fr; }
   .kpi-strip { grid-template-columns: repeat(3, 1fr); }
+  .news-stories-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 1024px) {
+  .transit-top-row {
+    flex-wrap: wrap;
+  }
+  .transit-kpis {
+    grid-template-columns: repeat(2, 1fr);
+    width: 100%;
+  }
+  .transit-spark-wrap {
+    width: 100%;
+    flex-direction: row;
+    justify-content: center;
+    gap: var(--space-2);
+  }
 }
 
 @media (max-width: 768px) {
@@ -1027,6 +1050,7 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   .procurement-table { display: block; overflow-x: auto; }
   .timeline { min-width: max-content; }
   .logo-sub { display: none; }
+  .logo-text { white-space: normal; font-size: 0.6875rem; }
 }
 
 /* ─── Print ─── */
@@ -1213,8 +1237,6 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
 
 .map-container {
   position: relative;
-  height: 280px;
-  max-height: 280px;
   min-width: 200px;
   overflow: hidden;
 }
@@ -1266,4 +1288,111 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   font-size: 0.5625rem;
   color: var(--color-text-muted);
   white-space: nowrap;
+}
+
+/* ─── UI Polish & Cleanup ─── */
+
+/* Custom scrollbar styling for dark mode */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-faint);
+}
+
+/* Subtle card hover effect */
+.card {
+  transition: border-color var(--transition-interactive), box-shadow var(--transition-interactive);
+}
+.card:hover {
+  border-color: var(--color-text-faint);
+  box-shadow: var(--shadow-md);
+}
+
+/* Table row hover effect */
+.commodity-table tbody tr,
+.freight-table tbody tr,
+.procurement-table tbody tr {
+  transition: background var(--transition-interactive);
+}
+.commodity-table tbody tr:hover,
+.freight-table tbody tr:hover {
+  background: var(--color-surface-2);
+}
+
+/* Chokepoint card hover */
+.chokepoint-item {
+  transition: border-color var(--transition-interactive), box-shadow var(--transition-interactive);
+}
+.chokepoint-item:hover {
+  border-color: var(--color-text-faint);
+  box-shadow: var(--shadow-sm);
+}
+
+/* KPI card subtle hover */
+.kpi-card {
+  transition: border-color var(--transition-interactive), transform var(--transition-interactive);
+}
+.kpi-card:hover {
+  border-color: var(--color-text-faint);
+  transform: translateY(-1px);
+}
+
+/* Timeline horizontal scroll — fade hint on overflow */
+.timeline {
+  position: relative;
+  mask-image: linear-gradient(to right, black 90%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black 90%, transparent 100%);
+}
+
+/* Story item hover */
+.story-item {
+  transition: border-color var(--transition-interactive), box-shadow var(--transition-interactive);
+}
+.story-item:hover {
+  border-color: var(--color-text-faint);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Smoother focus transitions */
+button, .btn {
+  transition: all var(--transition-interactive);
+}
+
+/* Exec banner subtle border left accent */
+.exec-banner {
+  border-left: 3px solid var(--color-primary);
+}
+
+/* COGS outlook accent */
+.cogs-outlook {
+  border-left: 3px solid var(--color-primary);
+}
+
+/* Better disclaimer bar */
+.disclaimer-bar {
+  backdrop-filter: blur(8px);
+}
+
+/* Smooth transit sparkline container */
+.transit-spark-wrap {
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1);
+}
+
+/* Better map legend spacing */
+.map-legend {
+  padding: var(--space-2) var(--space-4) var(--space-1);
+  border-top: 1px solid var(--color-divider);
+  margin-top: var(--space-2);
 }
