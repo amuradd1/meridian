@@ -549,6 +549,7 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-3);
+  min-width: 0;
 }
 
 .chokepoint-item {
@@ -556,12 +557,14 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-4);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .chokepoint-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2);
   margin-bottom: var(--space-2);
 }
@@ -570,24 +573,27 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   font-size: var(--text-xs);
   font-weight: 600;
   color: var(--color-text);
-  flex-shrink: 1;
-  min-width: 0;
+  white-space: nowrap;
 }
 
 .chokepoint-badges {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  flex-shrink: 0;
+  flex-shrink: 1;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: auto;
 }
 
 .status-badge {
-  font-size: 0.625rem;
+  font-size: 0.5625rem;
   font-weight: 700;
-  padding: 2px 8px;
+  padding: 2px 6px;
   border-radius: var(--radius-sm);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  white-space: nowrap;
 }
 
 .status-open {
@@ -616,12 +622,6 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
 }
 
 /* ─── Disruption Alert Badge ─── */
-.chokepoint-badges {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
 .disruption-alert {
   font-size: 0.5625rem;
   font-weight: 700;
@@ -765,15 +765,18 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   display: flex;
   gap: 0;
   overflow-x: auto;
-  padding: var(--space-2) 0;
+  padding: var(--space-2) var(--space-2) var(--space-2) 0;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
 .timeline-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 140px;
+  min-width: 130px;
+  max-width: 160px;
+  flex-shrink: 0;
   position: relative;
   padding: 0 var(--space-3);
 }
@@ -1210,9 +1213,10 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
 
 .map-container {
   position: relative;
-  min-height: 320px;
-  max-height: 400px;
+  min-height: 380px;
+  max-height: 460px;
   min-width: 200px;
+  overflow: visible;
 }
 
 .map-container svg {
