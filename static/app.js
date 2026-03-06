@@ -616,28 +616,56 @@ function generatePDFContent() {
 
 document.getElementById('exportPdf').addEventListener('click', function() {
   var pdfHtml = generatePDFContent();
-  if (!pdfHtml) { return; }
+  if (!pdfHtml) { alert('No data loaded yet. Please wait for the dashboard to load.'); return; }
+
+  var btn = document.getElementById('exportPdf');
+  btn.disabled = true;
+  btn.innerHTML = '<i data-lucide="loader"></i> Generating...';
+
+  // Create a wrapper that's visible to html2canvas but hidden from the user
+  var wrapper = document.createElement('div');
+  wrapper.style.cssText = 'position:absolute;top:0;left:0;width:794px;height:auto;overflow:hidden;z-index:-1;opacity:0;pointer-events:none;';
 
   var tempDiv = document.createElement('div');
   tempDiv.id = 'pdfExport';
-  tempDiv.style.position = 'fixed';
-  tempDiv.style.left = '-9999px';
-  tempDiv.style.top = '0';
-  tempDiv.style.width = '794px'; // A4 width at 96dpi
+  tempDiv.style.cssText = 'width:794px;min-height:1123px;overflow:visible;';
   tempDiv.innerHTML = pdfHtml;
-  document.body.appendChild(tempDiv);
+  wrapper.appendChild(tempDiv);
+  document.body.appendChild(wrapper);
+
+  // Force layout computation before capture
+  void tempDiv.offsetHeight;
 
   var opt = {
-    margin: [0.3, 0.3, 0.3, 0.3],
+    margin: [0.2, 0.2, 0.2, 0.2],
     filename: 'Daily_Intelligence_Brief_' + new Date().toISOString().slice(0, 10) + '.pdf',
-    image: { type: 'jpeg', quality: 0.95 },
-    html2canvas: { scale: 1.2, useCORS: true, backgroundColor: '#0c1220', width: 794 },
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#0c1220',
+      width: 794,
+      height: tempDiv.scrollHeight || 1123,
+      logging: false,
+      removeContainer: false
+    },
     jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
   };
 
-  html2pdf().set(opt).from(tempDiv).save().then(function() {
-    document.body.removeChild(tempDiv);
-  });
+  html2pdf().set(opt).from(tempDiv).save()
+    .then(function() {
+      document.body.removeChild(wrapper);
+    })
+    .catch(function(err) {
+      console.error('PDF generation error:', err);
+      alert('PDF generation failed: ' + (err.message || err));
+      if (wrapper.parentNode) { document.body.removeChild(wrapper); }
+    })
+    .finally(function() {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="download"></i> Export PDF';
+      lucide.createIcons();
+    });
 });
 
 // ─── Refresh Button ───

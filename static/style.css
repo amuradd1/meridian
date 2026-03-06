@@ -105,14 +105,10 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
 }
 
 .header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   padding: var(--space-3) var(--space-6);
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
   z-index: 10;
-  gap: var(--space-4);
 }
 
 .header-inner {
@@ -162,11 +158,14 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: var(--space-4) var(--space-6);
+  padding-left: max(var(--space-6), calc((100% - 1440px) / 2 + var(--space-6)));
+  padding-right: max(var(--space-6), calc((100% - 1440px) / 2 + var(--space-6)));
 }
 
 .main-inner {
   max-width: 1440px;
   margin: 0 auto;
+  width: 100%;
 }
 
 /* ─── Cards ─── */
