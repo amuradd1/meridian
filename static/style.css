@@ -600,6 +600,47 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   margin-top: var(--space-1);
 }
 
+/* ─── Disruption Alert Badge ─── */
+.chokepoint-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.disruption-alert {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  animation: alert-pulse 2s ease-in-out infinite;
+}
+
+.alert-red {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.alert-orange {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+@keyframes alert-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.chokepoint-alert-event {
+  font-size: 0.5625rem;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-1);
+  font-style: italic;
+}
+
 /* ─── Chokepoint Transit KPIs (PortWatch) ─── */
 .chokepoint-transit {
   margin-top: var(--space-2);
@@ -649,6 +690,28 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   margin-top: var(--space-1);
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+
+.transit-top-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.transit-top-row .transit-kpis {
+  flex: 1;
+}
+
+.transit-spark-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.transit-spark-wrap canvas {
+  display: block;
 }
 
 /* ─── Timeline ─── */

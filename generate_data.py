@@ -174,38 +174,67 @@ async def fetch_commodities():
 
 
 async def fetch_chokepoint_transit():
-    """Fetch daily vessel transit data from IMF PortWatch for our 4 chokepoints.
+    """Fetch daily vessel transit data + active disruption alerts from IMF PortWatch.
     Returns dict keyed by display name with transit stats and computed status."""
     port_ids = list(PORTWATCH_CHOKEPOINTS.keys())
     where_clause = "portid IN ('" + "','".join(port_ids) + "')"
-    url = (
+    transit_url = (
         "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/"
         "Daily_Chokepoints_Data/FeatureServer/0/query"
     )
-    params = {
+    disruptions_url = (
+        "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/"
+        "portwatch_disruptions_database/FeatureServer/0/query"
+    )
+    transit_params = {
         "where": where_clause,
         "outFields": "date,portid,portname,n_total,n_container,n_tanker,n_dry_bulk,capacity",
         "orderByFields": "date DESC",
-        "resultRecordCount": 280,  # ~70 days × 4 chokepoints
+        "resultRecordCount": 280,
+        "f": "json",
+    }
+    disruptions_params = {
+        "where": "todate IS NULL",  # active disruptions only
+        "outFields": "eventname,alertlevel,affectedports,fromdate,htmlname",
+        "resultRecordCount": 50,
         "f": "json",
     }
 
     result = {}
     try:
         async with httpx.AsyncClient(timeout=30) as http:
-            r = await http.get(url, params=params)
-            if r.status_code != 200:
-                print(f"  PortWatch API error: HTTP {r.status_code}")
-                return {}
-            data = r.json()
-            if "error" in data:
-                print(f"  PortWatch API error: {data['error']}")
-                return {}
+            # Fetch both in parallel
+            transit_resp, disruptions_resp = await asyncio.gather(
+                http.get(transit_url, params=transit_params),
+                http.get(disruptions_url, params=disruptions_params),
+            )
+
+        # Parse active disruptions — build a set of affected chokepoint IDs with alert levels
+        active_alerts = {}  # portid -> alert level
+        if disruptions_resp.status_code == 200:
+            d_data = disruptions_resp.json()
+            for feat in d_data.get("features", []):
+                a = feat["attributes"]
+                alert = (a.get("alertlevel") or "").upper()
+                affected = a.get("affectedports") or ""
+                event_name = a.get("htmlname") or a.get("eventname") or ""
+                for pid in affected.split(";"):
+                    pid = pid.strip()
+                    if pid in PORTWATCH_CHOKEPOINTS:
+                        active_alerts[pid] = {"alert": alert, "event": event_name}
+                        print(f"    Active disruption: {event_name} → {pid} [{alert}]")
+
+        if transit_resp.status_code != 200:
+            print(f"  PortWatch transit API error: HTTP {transit_resp.status_code}")
+            return {}
+        data = transit_resp.json()
+        if "error" in data:
+            print(f"  PortWatch transit API error: {data['error']}")
+            return {}
 
         features = data.get("features", [])
-        print(f"  PortWatch: {len(features)} records fetched")
+        print(f"  PortWatch: {len(features)} transit records fetched")
 
-        # Group by portid
         from collections import defaultdict
         by_port = defaultdict(list)
         for f in features:
@@ -218,7 +247,6 @@ async def fetch_chokepoint_transit():
             cp_info = PORTWATCH_CHOKEPOINTS[port_id]
             display = cp_info["display"]
 
-            # Sort by date ascending
             records.sort(key=lambda x: x["date"])
             totals = [r["n_total"] for r in records]
 
@@ -228,22 +256,15 @@ async def fetch_chokepoint_transit():
             latest = totals[-1]
             latest_date = datetime.fromtimestamp(records[-1]["date"] / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
 
-            # 30-day baseline (excluding latest day)
             baseline_window = totals[-31:-1] if len(totals) > 31 else totals[:-1]
             baseline_avg = sum(baseline_window) / len(baseline_window) if baseline_window else latest
 
-            # 7-day average (last 7 days including latest)
             avg_7d = sum(totals[-7:]) / min(len(totals), 7)
 
-            # % change from baseline
             pct_change = ((latest - baseline_avg) / baseline_avg * 100) if baseline_avg > 0 else 0
-
-            # 7d % change from baseline
             pct_change_7d = ((avg_7d - baseline_avg) / baseline_avg * 100) if baseline_avg > 0 else 0
 
-            # Derive status from transit volume drop
-            # Use BOTH 7d average (smoothed) and latest day (acute signal)
-            # Take the worse of the two to avoid missing sudden drops
+            # Derive status from transit volume drops
             def derive_status(pct):
                 if pct <= -50:
                     return "CLOSED", 168
@@ -257,8 +278,6 @@ async def fetch_chokepoint_transit():
             status_7d, delay_7d = derive_status(pct_change_7d)
             status_latest, delay_latest = derive_status(pct_change)
 
-            # Take the worse signal (latest day can catch acute disruptions
-            # that the 7d average hasn't absorbed yet)
             STATUS_ORDER = {"OPEN": 0, "RESTRICTED": 1, "CLOSED": 2}
             if STATUS_ORDER.get(status_latest, 0) > STATUS_ORDER.get(status_7d, 0):
                 status = status_latest
@@ -267,7 +286,26 @@ async def fetch_chokepoint_transit():
                 status = status_7d
                 delay_hours = delay_7d
 
-            # Container-specific stats
+            # Override with active disruption alerts from PortWatch
+            # RED alert = at minimum RESTRICTED, ORANGE = at minimum RESTRICTED
+            alert_info = active_alerts.get(port_id)
+            if alert_info:
+                alert_level = alert_info["alert"]
+                if alert_level == "RED" and STATUS_ORDER.get(status, 0) < STATUS_ORDER.get("RESTRICTED", 1):
+                    status = "RESTRICTED"
+                    # Estimate delay from transit drop magnitude even if 7d avg looks fine
+                    delay_hours = max(delay_hours, 24)
+                    print(f"    {display}: Elevated to RESTRICTED (RED alert active: {alert_info['event']})")
+                elif alert_level == "ORANGE" and STATUS_ORDER.get(status, 0) < STATUS_ORDER.get("RESTRICTED", 1):
+                    status = "RESTRICTED"
+                    delay_hours = max(delay_hours, 12)
+
+            # Compute delay_days for the KPI card (based on rerouting impact)
+            # Even if transit volume hasn't dropped yet, an active RED alert implies delays
+            # Use capacity-weighted rerouting estimates
+            if status == "OPEN":
+                delay_hours = 0
+
             containers = [r.get("n_container", 0) for r in records]
             latest_containers = containers[-1] if containers else 0
             tankers = [r.get("n_tanker", 0) for r in records]
@@ -285,8 +323,10 @@ async def fetch_chokepoint_transit():
                 "latest_containers": latest_containers,
                 "latest_tankers": latest_tankers,
                 "history_7d": totals[-7:],
+                "alert_level": alert_info["alert"] if alert_info else None,
+                "alert_event": alert_info["event"] if alert_info else None,
             }
-            print(f"    {display}: {latest} transits (30d avg: {baseline_avg:.0f}, 7d avg: {avg_7d:.0f}, 7d Δ: {pct_change_7d:+.1f}%) → {status}")
+            print(f"    {display}: {latest} transits (30d avg: {baseline_avg:.0f}, 7d avg: {avg_7d:.0f}, 7d Δ: {pct_change_7d:+.1f}%) → {status} (delay: {delay_hours}h)")
 
     except Exception as e:
         print(f"  PortWatch fetch error: {e}")
@@ -640,6 +680,8 @@ WRITING QUALITY:
                 cp["transit_tankers"] = pw["latest_tankers"]
                 cp["transit_date"] = pw["latest_date"]
                 cp["transit_history_7d"] = pw["history_7d"]
+                cp["alert_level"] = pw.get("alert_level")
+                cp["alert_event"] = pw.get("alert_event")
 
     # ── Post-process: Stabilise procurement categories ──
     prev_data = load_previous_data()

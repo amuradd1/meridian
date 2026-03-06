@@ -223,7 +223,8 @@ function renderFreightRates(rates) {
     var changeStr = r.change_7d || '—';
     var isUp = changeStr.indexOf('+') !== -1;
     var isDown = changeStr.indexOf('-') !== -1;
-    var changeCls = isUp ? 'change-positive' : (isDown ? 'change-negative' : 'change-flat');
+    // For freight: price UP = bad (red), price DOWN = good (green)
+    var changeCls = isUp ? 'change-negative' : (isDown ? 'change-positive' : 'change-flat');
     html += '<tr>' +
       '<td><span class="freight-route">' + r.route + '</span></td>' +
       '<td><span class="freight-rate">' + (r.rate_20ft || '—') + '</span></td>' +
@@ -289,44 +290,60 @@ function renderChokepoints(chokepoints) {
   }
 
   var html = '';
-  chokepoints.forEach(function(cp) {
+  chokepoints.forEach(function(cp, idx) {
     var statusLower = (cp.status || 'open').toLowerCase();
     var statusClass = 'status-' + statusLower;
     var hasTransit = cp.transit_latest != null;
-    var pctChange = cp.transit_pct_change || 0;  // latest day vs baseline
-    var pctChange7d = cp.transit_pct_change_7d || 0;  // 7d avg vs baseline
+    var pctChange = cp.transit_pct_change || 0;
+    var pctChange7d = cp.transit_pct_change_7d || 0;
     var pctClass = pctChange <= -25 ? 'change-negative' : (pctChange <= -15 ? 'change-positive' : 'change-flat');
     var pctSign = pctChange > 0 ? '+' : '';
+
+    var alertBadge = '';
+    if (cp.alert_level) {
+      var alertCls = cp.alert_level === 'RED' ? 'alert-red' : 'alert-orange';
+      var alertLabel = cp.alert_level === 'RED' ? '⚠ RED ALERT' : '⚠ ORANGE ALERT';
+      alertBadge = '<span class="disruption-alert ' + alertCls + '" title="' + (cp.alert_event || '') + '">' + alertLabel + '</span>';
+    }
 
     html += '<div class="chokepoint-item">' +
       '<div class="chokepoint-header">' +
         '<span class="chokepoint-name">' + cp.name + '</span>' +
-        '<span class="status-badge ' + statusClass + '">' + (cp.status || 'OPEN') + '</span>' +
+        '<div class="chokepoint-badges">' +
+          alertBadge +
+          '<span class="status-badge ' + statusClass + '">' + (cp.status || 'OPEN') + '</span>' +
+        '</div>' +
       '</div>' +
+      (cp.alert_event ? '<div class="chokepoint-alert-event">' + cp.alert_event + '</div>' : '') +
       '<div class="chokepoint-detail">' + (cp.detail || 'No current alerts.') + '</div>' +
       (cp.delay_hours > 0 ? '<div class="chokepoint-delay">Est. delay: +' + cp.delay_hours + 'h</div>' : '');
 
-    // PortWatch transit KPIs
     if (hasTransit) {
       var pct7dSign = pctChange7d > 0 ? '+' : '';
       var pct7dClass = pctChange7d <= -25 ? 'change-negative' : (pctChange7d <= -15 ? 'change-positive' : 'change-flat');
       html += '<div class="chokepoint-transit">' +
-        '<div class="transit-kpis">' +
-          '<div class="transit-kpi">' +
-            '<span class="transit-kpi-value">' + cp.transit_latest + '</span>' +
-            '<span class="transit-kpi-label">Latest Day</span>' +
+        '<div class="transit-top-row">' +
+          '<div class="transit-kpis">' +
+            '<div class="transit-kpi">' +
+              '<span class="transit-kpi-value">' + cp.transit_latest + '</span>' +
+              '<span class="transit-kpi-label">Latest Day</span>' +
+            '</div>' +
+            '<div class="transit-kpi">' +
+              '<span class="transit-kpi-value ' + pctClass + '">' + pctSign + pctChange.toFixed(1) + '%</span>' +
+              '<span class="transit-kpi-label">vs Baseline</span>' +
+            '</div>' +
+            '<div class="transit-kpi">' +
+              '<span class="transit-kpi-value">' + (cp.transit_containers || 0) + '</span>' +
+              '<span class="transit-kpi-label">Containers</span>' +
+            '</div>' +
+            '<div class="transit-kpi">' +
+              '<span class="transit-kpi-value">' + (cp.transit_tankers || 0) + '</span>' +
+              '<span class="transit-kpi-label">Tankers</span>' +
+            '</div>' +
           '</div>' +
-          '<div class="transit-kpi">' +
-            '<span class="transit-kpi-value ' + pctClass + '">' + pctSign + pctChange.toFixed(1) + '%</span>' +
-            '<span class="transit-kpi-label">vs Baseline</span>' +
-          '</div>' +
-          '<div class="transit-kpi">' +
-            '<span class="transit-kpi-value">' + (cp.transit_containers || 0) + '</span>' +
-            '<span class="transit-kpi-label">Containers</span>' +
-          '</div>' +
-          '<div class="transit-kpi">' +
-            '<span class="transit-kpi-value">' + (cp.transit_tankers || 0) + '</span>' +
-            '<span class="transit-kpi-label">Tankers</span>' +
+          '<div class="transit-spark-wrap">' +
+            '<canvas id="cp-spark-' + idx + '" width="100" height="28"></canvas>' +
+            '<span class="transit-kpi-label">7d Trend</span>' +
           '</div>' +
         '</div>' +
         '<div class="transit-secondary">' +
@@ -341,6 +358,72 @@ function renderChokepoints(chokepoints) {
     html += '</div>';
   });
   container.innerHTML = html;
+
+  // Draw 7d sparklines after DOM update
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      chokepoints.forEach(function(cp, idx) {
+        var history = cp.transit_history_7d;
+        if (!history || history.length < 2) return;
+        drawChokepointSparkline('cp-spark-' + idx, history, cp.transit_baseline || 0);
+      });
+    });
+  });
+}
+
+function drawChokepointSparkline(canvasId, dataPoints, baseline) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  canvas.width = 100;
+  canvas.height = 28;
+
+  var root = getComputedStyle(document.documentElement);
+  // Color based on trend direction (last vs first)
+  var trending = dataPoints[dataPoints.length - 1] >= dataPoints[0];
+  var lineColor = trending
+    ? (root.getPropertyValue('--color-up').trim() || '#22c55e')
+    : (root.getPropertyValue('--color-down').trim() || '#ef4444');
+
+  var datasets = [{
+    data: dataPoints,
+    borderColor: lineColor,
+    borderWidth: 1.5,
+    fill: false,
+    pointRadius: 0,
+    tension: 0.3
+  }];
+
+  // Add baseline reference line if we have it
+  if (baseline > 0) {
+    datasets.push({
+      data: dataPoints.map(function() { return baseline; }),
+      borderColor: root.getPropertyValue('--color-text-faint').trim() || '#64748b',
+      borderWidth: 1,
+      borderDash: [3, 3],
+      fill: false,
+      pointRadius: 0,
+      tension: 0
+    });
+  }
+
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: dataPoints.map(function(_, i) { return i; }),
+      datasets: datasets
+    },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: { display: false },
+        y: { display: false }
+      },
+      animation: { duration: 400 }
+    }
+  });
 }
 
 function renderProcurement(categories) {
