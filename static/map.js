@@ -1,4 +1,5 @@
 /* map.js — Global Supply Chain Risk Map */
+/* global d3, topojson */
 
 // Tobacco supplier origin countries (default — will be overridden by Supabase data when available)
 var SUPPLIER_ORIGINS = {
@@ -20,215 +21,394 @@ var SUPPLIER_ORIGINS = {
     { country: "Italy", iso: "ITA", lat: 41.9, lng: 12.6 }
   ],
   "Flavors & Ingredients": [
-    { country: "United States", iso: "USA", lat: 37.1, lng: -95.7 },
-    { country: "France", iso: "FRA", lat: 46.2, lng: 2.2 },
+    { country: "India", iso: "IND", lat: 20.6, lng: 78.9 },
     { country: "China", iso: "CHN", lat: 35.9, lng: 104.2 },
-    { country: "India", iso: "IND", lat: 20.6, lng: 78.9 }
+    { country: "Germany", iso: "DEU", lat: 51.2, lng: 10.5 },
+    { country: "United States", iso: "USA", lat: 37.1, lng: -95.7 }
   ],
   "Heated Tobacco Devices & Consumables": [
     { country: "China", iso: "CHN", lat: 35.9, lng: 104.2 },
-    { country: "Malaysia", iso: "MYS", lat: 4.2, lng: 108.0 },
-    { country: "South Korea", iso: "KOR", lat: 36.5, lng: 127.9 }
+    { country: "South Korea", iso: "KOR", lat: 35.9, lng: 127.8 },
+    { country: "Japan", iso: "JPN", lat: 36.2, lng: 138.3 }
   ],
   "E-Cigarettes & Vape Devices": [
-    { country: "China", iso: "CHN", lat: 22.5, lng: 114.1 },
-    { country: "Malaysia", iso: "MYS", lat: 4.2, lng: 108.0 }
+    { country: "China", iso: "CHN", lat: 35.9, lng: 104.2 }
   ],
   "Nicotine Pouches": [
     { country: "Sweden", iso: "SWE", lat: 60.1, lng: 18.6 },
-    { country: "Switzerland", iso: "CHE", lat: 46.8, lng: 8.2 },
-    { country: "China", iso: "CHN", lat: 35.9, lng: 104.2 }
+    { country: "India", iso: "IND", lat: 20.6, lng: 78.9 },
+    { country: "United States", iso: "USA", lat: 37.1, lng: -95.7 }
   ]
 };
 
-// Major shipping routes (polylines)
-var SHIPPING_ROUTES = [
-  { name: "Asia-Europe (Suez)", points: [[22.5,114.1],[3.1,101.7],[-1.3,103.8],[1.3,104.8],[4.0,98.0],[12.6,44.0],[12.8,43.1],[27.9,34.0],[30.0,32.3],[31.2,32.4],[36.8,22.0],[37.3,24.1],[38.9,20.5],[44.0,15.3],[51.5,-0.1]]},
-  { name: "Transpacific", points: [[22.5,114.1],[25.0,140.0],[35.0,165.0],[38.0,-122.5],[34.0,-118.3]]},
-  { name: "Asia-Cape of Good Hope", points: [[22.5,114.1],[3.1,101.7],[-1.3,103.8],[1.3,104.8],[-10.0,90.0],[-34.4,18.5],[-33.9,-70.7],[51.5,-0.1]]}
-];
-
-// Chokepoints with coordinates
+// Critical chokepoints with coordinates
 var CHOKEPOINTS = [
-  { name: "Strait of Hormuz",      lat: 26.6, lng: 56.3 },
-  { name: "Bab el-Mandeb",         lat: 12.6, lng: 43.3 },
-  { name: "Suez Canal",            lat: 30.5, lng: 32.4 },
-  { name: "Malacca Strait",        lat: 2.5,  lng: 101.5 }
+  { name: "Strait of Hormuz", lat: 26.6, lng: 56.3 },
+  { name: "Bab el-Mandeb", lat: 12.6, lng: 43.3 },
+  { name: "Suez Canal", lat: 30.5, lng: 32.3 },
+  { name: "Malacca Strait", lat: 2.5, lng: 101.5 }
 ];
 
-function renderSupplyChainMap(containerId, data) {
-  var container = document.getElementById(containerId);
-  if (!container) return;
+// Key shipping routes as arcs (simplified great-circle waypoints)
+var SHIPPING_ROUTES = [
+  { name: "East Africa → Suez", points: [[-13.3, 34.3], [-2, 40], [12.6, 43.3], [30.5, 32.3], [42, 12]], color: "#f59e0b" },
+  { name: "India → Suez → Europe", points: [[20.6, 78.9], [15, 65], [12.6, 43.3], [30.5, 32.3], [42, 12]], color: "#38bdf8" },
+  { name: "China/SEA → Malacca → Europe", points: [[22.5, 114], [2.5, 104], [2.5, 101.5], [-5, 60], [12.6, 43.3], [30.5, 32.3], [42, 12]], color: "#a78bfa" },
+  { name: "China → Hormuz → Middle East", points: [[22.5, 114], [10, 80], [26.6, 56.3]], color: "#ef4444" }
+];
 
-  // Clear any previous content
-  container.innerHTML = '';
+// Category color palette
+var CATEGORY_COLORS = {
+  "Cellulose Acetate Filter Tow": "#f59e0b",
+  "Cigarette Packaging (Board & Print)": "#38bdf8",
+  "Flexible Packaging & Foils": "#a78bfa",
+  "Flavors & Ingredients": "#ec4899",
+  "Heated Tobacco Devices & Consumables": "#f97316",
+  "E-Cigarettes & Vape Devices": "#ef4444",
+  "Nicotine Pouches": "#14b8a6"
+};
 
-  var width  = container.clientWidth  || 800;
-  var height = container.clientHeight || 380;
+function renderSupplyChainMap(chokeStatus, riskHeatmap) {
+  var container = document.getElementById("supplyChainMap");
+  if (!container) {
+    console.error("Map container #supplyChainMap not found");
+    return;
+  }
+  container.innerHTML = "";
 
-  // --- SVG setup ---
-  var svg = d3.select('#' + containerId)
-    .append('svg')
-    .attr('width', '100%')
-    .attr('height', '100%')
-    .attr('viewBox', '0 0 ' + width + ' ' + height);
+  var width = container.clientWidth || 900;
+  var height = Math.min(width * 0.52, 480);
 
-  // Background
-  svg.append('rect')
-    .attr('width', width)
-    .attr('height', height)
-    .attr('fill', '#0c1220');
+  // If container has no width yet, retry after a short delay
+  if (width < 100) {
+    console.warn("Map container has no width, retrying...");
+    setTimeout(function() {
+      renderSupplyChainMap(chokeStatus, riskHeatmap);
+    }, 200);
+    return;
+  }
 
-  // Projection: Natural Earth
+  var svg = d3.select(container)
+    .append("svg")
+    .attr("viewBox", "0 0 " + width + " " + height)
+    .attr("preserveAspectRatio", "xMidYMid meet")
+    .style("width", "100%")
+    .style("height", "auto")
+    .style("background", "transparent");
+
+  // Projection — Natural Earth
   var projection = d3.geoNaturalEarth1()
-    .scale(width / 6.5)
+    .scale(width / 5.8)
     .translate([width / 2, height / 2]);
 
   var path = d3.geoPath().projection(projection);
 
-  // Graticule
-  var graticule = d3.geoGraticule();
-  svg.append('path')
-    .datum(graticule())
-    .attr('d', path)
-    .attr('fill', 'none')
-    .attr('stroke', '#1e2d40')
-    .attr('stroke-width', 0.3);
+  // Build risk lookup from intelligence data
+  var riskLookup = {};
+  if (riskHeatmap) {
+    riskHeatmap.forEach(function(r) {
+      var rl = r.risk ? r.risk.toLowerCase() : "medium";
+      // Map region names to ISO codes
+      var regionCountries = {
+        "Middle East": ["IRN", "IRQ", "SAU", "ARE", "QAT", "KWT", "OMN", "YEM", "BHR", "JOR", "SYR", "LBN", "ISR", "PSE"],
+        "Red Sea": ["EGY", "SDN", "ERI", "DJI", "SOM"],
+        "South China Sea": ["CHN", "VNM", "PHL", "MYS", "BRN", "TWN"],
+        "Black Sea": ["UKR", "RUS", "ROU", "BGR", "GEO", "TUR"]
+      };
+      var codes = regionCountries[r.region] || [];
+      codes.forEach(function(c) { riskLookup[c] = rl; });
+    });
+  }
 
-  // Load world topojson
-  d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(function(world) {
+  // Build supplier country set
+  var supplierISOs = {};
+  Object.keys(SUPPLIER_ORIGINS).forEach(function(cat) {
+    SUPPLIER_ORIGINS[cat].forEach(function(s) {
+      if (!supplierISOs[s.iso]) { supplierISOs[s.iso] = []; }
+      supplierISOs[s.iso].push(cat);
+    });
+  });
+
+  // Build chokepoint status lookup
+  var chokeLookup = {};
+  if (chokeStatus) {
+    chokeStatus.forEach(function(cp) {
+      var key = cp.name.toLowerCase();
+      CHOKEPOINTS.forEach(function(ref) {
+        if (key.indexOf(ref.name.toLowerCase().split(" ")[0]) !== -1 || 
+            ref.name.toLowerCase().indexOf(key.split(" ")[0]) !== -1 ||
+            ref.name.toLowerCase().indexOf(key.split("/")[0].trim().split(" ")[0]) !== -1) {
+          chokeLookup[ref.name] = cp;
+        }
+      });
+    });
+  }
+
+  // Defs for glow and gradients
+  var defs = svg.append("defs");
+  
+  var glow = defs.append("filter").attr("id", "glow");
+  glow.append("feGaussianBlur").attr("stdDeviation", "2").attr("result", "coloredBlur");
+  var feMerge = glow.append("feMerge");
+  feMerge.append("feMergeNode").attr("in", "coloredBlur");
+  feMerge.append("feMergeNode").attr("in", "SourceGraphic");
+
+  var pulseGlow = defs.append("filter").attr("id", "pulseGlow");
+  pulseGlow.append("feGaussianBlur").attr("stdDeviation", "3").attr("result", "blur");
+  var feMerge2 = pulseGlow.append("feMerge");
+  feMerge2.append("feMergeNode").attr("in", "blur");
+  feMerge2.append("feMergeNode").attr("in", "SourceGraphic");
+
+  // Graticule (lat/lng grid lines)
+  var graticule = d3.geoGraticule().step([30, 30]);
+  svg.append("path")
+    .datum(graticule())
+    .attr("d", path)
+    .attr("fill", "none")
+    .attr("stroke", "var(--color-border)")
+    .attr("stroke-width", 0.3)
+    .attr("stroke-opacity", 0.5);
+
+  // Load world TopoJSON
+  var worldUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+  
+  d3.json(worldUrl).then(function(world) {
+    if (!world || !world.objects || !world.objects.countries) {
+      console.error("Invalid TopoJSON data:", world);
+      container.innerHTML = '<p style="color:var(--color-text-faint);text-align:center;padding:var(--space-6)">Map data format error</p>';
+      return;
+    }
+
     var countries = topojson.feature(world, world.objects.countries);
 
-    // Draw countries
-    svg.selectAll('.country')
-      .data(countries.features)
-      .enter().append('path')
-        .attr('class', 'country')
-        .attr('d', path)
-        .attr('fill', '#1a2332')
-        .attr('stroke', '#1e2d40')
-        .attr('stroke-width', 0.4);
-
-    // Highlight supplier countries
-    var supplierCountries = new Set();
-    var categoryData = {};
-    if (data && data.intelligence && data.intelligence.procurement_categories) {
-      data.intelligence.procurement_categories.forEach(function(cat) {
-        var origins = SUPPLIER_ORIGINS[cat.name] || [];
-        origins.forEach(function(o) {
-          supplierCountries.add(o.iso);
-          if (!categoryData[o.iso]) categoryData[o.iso] = [];
-          categoryData[o.iso].push({ category: cat.name, risk: cat.risk });
-        });
-      });
-    }
-
-    // Country ISO codes from numeric topojson IDs
-    var isoMap = {
-      '056': 'BEL', '826': 'GBR', '156': 'CHN', '840': 'USA',
-      '276': 'DEU', '040': 'AUT', '360': 'IDN', '356': 'IND',
-      '792': 'TUR', '380': 'ITA', '250': 'FRA', '458': 'MYS',
-      '410': 'KOR', '752': 'SWE', '756': 'CHE'
+    // Country ID to ISO lookup (Natural Earth numeric → ISO3)
+    var idToISO = {};
+    // Common numeric ID mappings
+    var numToISO = {
+      4: "AFG", 8: "ALB", 12: "DZA", 24: "AGO", 32: "ARG", 36: "AUS", 40: "AUT",
+      50: "BGD", 56: "BEL", 68: "BOL", 70: "BIH", 72: "BWA", 76: "BRA", 100: "BGR",
+      104: "MMR", 116: "KHM", 120: "CMR", 124: "CAN", 144: "LKA", 152: "CHL",
+      156: "CHN", 170: "COL", 180: "COD", 188: "CRI", 191: "HRV", 192: "CUB",
+      196: "CYP", 203: "CZE", 208: "DNK", 214: "DOM", 218: "ECU", 818: "EGY",
+      222: "SLV", 231: "ETH", 232: "ERI", 233: "EST", 246: "FIN", 250: "FRA",
+      262: "DJI", 266: "GAB", 268: "GEO", 276: "DEU", 288: "GHA", 300: "GRC",
+      320: "GTM", 324: "GIN", 332: "HTI", 340: "HND", 348: "HUN", 352: "ISL",
+      356: "IND", 360: "IDN", 364: "IRN", 368: "IRQ", 372: "IRL", 376: "ISR",
+      380: "ITA", 384: "CIV", 388: "JAM", 392: "JPN", 398: "KAZ", 400: "JOR",
+      404: "KEN", 408: "PRK", 410: "KOR", 414: "KWT", 422: "LBN", 426: "LSO",
+      430: "LBR", 434: "LBY", 440: "LTU", 442: "LUX", 450: "MDG", 454: "MWI",
+      458: "MYS", 466: "MLI", 478: "MRT", 484: "MEX", 496: "MNG", 504: "MAR",
+      508: "MOZ", 512: "OMN", 516: "NAM", 524: "NPL", 528: "NLD", 540: "NCL",
+      554: "NZL", 558: "NIC", 562: "NER", 566: "NGA", 578: "NOR", 586: "PAK",
+      591: "PAN", 598: "PNG", 600: "PRY", 604: "PER", 608: "PHL", 616: "POL",
+      620: "PRT", 630: "PRI", 634: "QAT", 642: "ROU", 643: "RUS", 646: "RWA",
+      682: "SAU", 686: "SEN", 688: "SRB", 694: "SLE", 702: "SGP", 703: "SVK",
+      704: "VNM", 705: "SVN", 706: "SOM", 710: "ZAF", 716: "ZWE", 724: "ESP",
+      729: "SDN", 736: "SSD", 740: "SUR", 752: "SWE", 756: "CHE", 760: "SYR",
+      762: "TJK", 764: "THA", 768: "TGO", 780: "TTO", 784: "ARE", 788: "TUN",
+      792: "TUR", 800: "UGA", 804: "UKR", 807: "MKD", 826: "GBR", 834: "TZA",
+      840: "USA", 854: "BFA", 858: "URY", 860: "UZB", 862: "VEN", 887: "YEM",
+      894: "ZMB", 48: "BHR", 10: "ATA", 158: "TWN", 275: "PSE"
     };
 
-    svg.selectAll('.country').each(function(d) {
-      var numericId = d.id ? String(d.id).padStart(3, '0') : null;
-      var iso = numericId ? isoMap[numericId] : null;
-      if (iso && supplierCountries.has(iso)) {
-        var cats = categoryData[iso] || [];
-        var hasHigh = cats.some(function(c) { return c.risk === 'H'; });
-        var hasMed = cats.some(function(c) { return c.risk === 'M'; });
-        d3.select(this).attr('fill', hasHigh ? 'rgba(239,68,68,0.35)' : hasMed ? 'rgba(245,158,11,0.3)' : 'rgba(34,197,94,0.25)');
+    countries.features.forEach(function(f) {
+      var numId = +f.id || +f.properties.id;
+      idToISO[f.id] = numToISO[numId] || f.id;
+    });
+
+    // Draw countries
+    svg.selectAll(".country")
+      .data(countries.features)
+      .enter().append("path")
+      .attr("class", "country")
+      .attr("d", path)
+      .attr("fill", function(d) {
+        var iso = idToISO[d.id];
+        // Check risk region first
+        if (riskLookup[iso] === "high") { return "rgba(239, 68, 68, 0.25)"; }
+        if (riskLookup[iso] === "medium") { return "rgba(245, 158, 11, 0.15)"; }
+        // Check if supplier country
+        if (supplierISOs[iso]) { return "rgba(56, 189, 248, 0.15)"; }
+        // Default
+        return "var(--color-surface-2)";
+      })
+      .attr("stroke", function(d) {
+        var iso = idToISO[d.id];
+        if (riskLookup[iso] === "high") { return "rgba(239, 68, 68, 0.5)"; }
+        if (riskLookup[iso] === "medium") { return "rgba(245, 158, 11, 0.35)"; }
+        if (supplierISOs[iso]) { return "rgba(56, 189, 248, 0.4)"; }
+        return "var(--color-border)";
+      })
+      .attr("stroke-width", function(d) {
+        var iso = idToISO[d.id];
+        return (riskLookup[iso] || supplierISOs[iso]) ? 0.8 : 0.3;
+      });
+
+    // Draw shipping routes as curved lines
+    var routeGroup = svg.append("g").attr("class", "routes");
+    SHIPPING_ROUTES.forEach(function(route) {
+      var lineGen = d3.line()
+        .x(function(d) { return projection([ d[1], d[0] ])[0]; })
+        .y(function(d) { return projection([ d[1], d[0] ])[1]; })
+        .curve(d3.curveBasis);
+
+      routeGroup.append("path")
+        .datum(route.points)
+        .attr("d", lineGen)
+        .attr("fill", "none")
+        .attr("stroke", route.color)
+        .attr("stroke-width", 1.2)
+        .attr("stroke-opacity", 0.4)
+        .attr("stroke-dasharray", "4,3");
+    });
+
+    // Draw chokepoint markers
+    var chokeGroup = svg.append("g").attr("class", "chokepoints");
+    CHOKEPOINTS.forEach(function(cp) {
+      var pos = projection([cp.lng, cp.lat]);
+      if (!pos) { return; }
+      var status = chokeLookup[cp.name];
+      var statusLevel = status ? status.status.toLowerCase() : "open";
+      var color = statusLevel === "restricted" ? "var(--color-risk-medium)" :
+                  statusLevel === "closed" ? "var(--color-risk-high)" : "var(--color-risk-low)";
+
+      // Pulsing ring for restricted/closed
+      if (statusLevel !== "open") {
+        chokeGroup.append("circle")
+          .attr("cx", pos[0]).attr("cy", pos[1])
+          .attr("r", 8)
+          .attr("fill", "none")
+          .attr("stroke", color)
+          .attr("stroke-width", 1)
+          .attr("stroke-opacity", 0.6)
+          .attr("class", "choke-pulse");
+      }
+
+      chokeGroup.append("circle")
+        .attr("cx", pos[0]).attr("cy", pos[1])
+        .attr("r", 4)
+        .attr("fill", color)
+        .attr("stroke", "#0c1220")
+        .attr("stroke-width", 1.5)
+        .attr("filter", "url(#glow)");
+
+      chokeGroup.append("text")
+        .attr("x", pos[0]).attr("y", pos[1] - 9)
+        .attr("text-anchor", "middle")
+        .attr("font-size", "8px")
+        .attr("font-weight", "600")
+        .attr("fill", color)
+        .attr("font-family", "var(--font-body)")
+        .text(cp.name);
+    });
+
+    // Draw supplier origin dots
+    var dotGroup = svg.append("g").attr("class", "supplier-dots");
+    var allOrigins = [];
+    Object.keys(SUPPLIER_ORIGINS).forEach(function(cat) {
+      SUPPLIER_ORIGINS[cat].forEach(function(origin) {
+        allOrigins.push({ category: cat, country: origin.country, iso: origin.iso, lat: origin.lat, lng: origin.lng });
+      });
+    });
+
+    // Deduplicate by country (show as multi-category dots)
+    var countryDots = {};
+    allOrigins.forEach(function(o) {
+      if (!countryDots[o.iso]) {
+        countryDots[o.iso] = { country: o.country, lat: o.lat, lng: o.lng, categories: [] };
+      }
+      if (countryDots[o.iso].categories.indexOf(o.category) === -1) {
+        countryDots[o.iso].categories.push(o.category);
       }
     });
 
-    // Draw shipping routes
-    SHIPPING_ROUTES.forEach(function(route) {
-      var lineData = route.points.map(function(p) {
-        return projection([p[1], p[0]]);
-      }).filter(function(p) { return p !== null; });
+    Object.keys(countryDots).forEach(function(iso) {
+      var dot = countryDots[iso];
+      var pos = projection([dot.lng, dot.lat]);
+      if (!pos) { return; }
+      var r = 3 + dot.categories.length * 1.2;
+      var mainCat = dot.categories[0];
 
-      if (lineData.length < 2) return;
+      // Outer glow
+      dotGroup.append("circle")
+        .attr("cx", pos[0]).attr("cy", pos[1])
+        .attr("r", r + 3)
+        .attr("fill", CATEGORY_COLORS[mainCat] || "#38bdf8")
+        .attr("fill-opacity", 0.15)
+        .attr("filter", "url(#pulseGlow)");
 
-      var line = d3.line().x(function(d) { return d[0]; }).y(function(d) { return d[1]; }).curve(d3.curveCatmullRom.alpha(0.5));
+      // Main dot
+      dotGroup.append("circle")
+        .attr("cx", pos[0]).attr("cy", pos[1])
+        .attr("r", r)
+        .attr("fill", CATEGORY_COLORS[mainCat] || "#38bdf8")
+        .attr("fill-opacity", 0.8)
+        .attr("stroke", "#0c1220")
+        .attr("stroke-width", 1);
 
-      svg.append('path')
-        .datum(lineData)
-        .attr('d', line)
-        .attr('fill', 'none')
-        .attr('stroke', 'rgba(56,189,248,0.25)')
-        .attr('stroke-width', 1.2)
-        .attr('stroke-dasharray', '4,3');
+      // Category count badge if multiple
+      if (dot.categories.length > 1) {
+        dotGroup.append("text")
+          .attr("x", pos[0]).attr("y", pos[1] + 3)
+          .attr("text-anchor", "middle")
+          .attr("font-size", "7px")
+          .attr("font-weight", "700")
+          .attr("fill", "#0c1220")
+          .attr("font-family", "var(--font-body)")
+          .text(dot.categories.length);
+      }
+
+      // Country label
+      dotGroup.append("text")
+        .attr("x", pos[0]).attr("y", pos[1] + r + 10)
+        .attr("text-anchor", "middle")
+        .attr("font-size", "7px")
+        .attr("font-weight", "500")
+        .attr("fill", "var(--color-text-muted)")
+        .attr("font-family", "var(--font-body)")
+        .text(dot.country);
     });
 
-    // Draw chokepoints
-    if (data && data.intelligence && data.intelligence.chokepoint_status) {
-      var cpStatusMap = {};
-      data.intelligence.chokepoint_status.forEach(function(cp) {
-        cpStatusMap[cp.name] = cp.status;
-      });
-
-      CHOKEPOINTS.forEach(function(cp) {
-        var pt = projection([cp.lng, cp.lat]);
-        if (!pt) return;
-        var status = (cpStatusMap[cp.name] || 'OPEN').toLowerCase();
-        var color = status === 'open' ? '#22c55e' : status === 'restricted' ? '#f59e0b' : '#ef4444';
-
-        // Pulse ring
-        svg.append('circle')
-          .attr('cx', pt[0]).attr('cy', pt[1])
-          .attr('r', 8)
-          .attr('fill', color)
-          .attr('opacity', 0.15);
-
-        svg.append('circle')
-          .attr('cx', pt[0]).attr('cy', pt[1])
-          .attr('r', 4)
-          .attr('fill', color)
-          .attr('opacity', 0.8);
-
-        // Label
-        svg.append('text')
-          .attr('x', pt[0] + 7)
-          .attr('y', pt[1] + 4)
-          .attr('fill', '#94a3b8')
-          .attr('font-size', '8px')
-          .attr('font-family', 'Inter, sans-serif')
-          .text(cp.name.split('/')[0].trim());
-      });
+    // Animate chokepoint pulses
+    if (!document.getElementById('chokePulseStyle')) {
+      var style = document.createElement("style");
+      style.id = 'chokePulseStyle';
+      style.textContent = "@keyframes chokePulse{0%,100%{r:8;opacity:.6}50%{r:14;opacity:0}}.choke-pulse{animation:chokePulse 2s infinite ease-in-out}";
+      document.head.appendChild(style);
     }
 
-    // Supplier origin dots
-    Object.entries(SUPPLIER_ORIGINS).forEach(function(entry) {
-      var catName = entry[0];
-      var origins = entry[1];
-      var catRisk = 'L';
-      if (data && data.intelligence && data.intelligence.procurement_categories) {
-        var cat = data.intelligence.procurement_categories.find(function(c) { return c.name === catName; });
-        if (cat) catRisk = cat.risk;
-      }
-      var dotColor = catRisk === 'H' ? '#ef4444' : catRisk === 'M' ? '#f59e0b' : '#22c55e';
-
-      origins.forEach(function(origin) {
-        var pt = projection([origin.lng, origin.lat]);
-        if (!pt) return;
-        svg.append('circle')
-          .attr('cx', pt[0]).attr('cy', pt[1])
-          .attr('r', 3)
-          .attr('fill', dotColor)
-          .attr('opacity', 0.7)
-          .append('title')
-          .text(origin.country + ' (' + catName + ')');
-      });
-    });
-
   }).catch(function(err) {
-    console.warn('Map data load failed:', err);
-    svg.append('text')
-      .attr('x', width / 2).attr('y', height / 2)
-      .attr('text-anchor', 'middle')
-      .attr('fill', '#64748b')
-      .attr('font-size', '13px')
-      .text('Map unavailable');
+    console.error("Map load error:", err);
+    container.innerHTML = '<p style="color:var(--color-text-faint);text-align:center;padding:var(--space-6)">Map data unavailable — ' + (err.message || err) + '</p>';
   });
+
+  // Build legend
+  renderMapLegend(container);
+}
+
+function renderMapLegend(container) {
+  var legend = document.createElement("div");
+  legend.className = "map-legend";
+  
+  var html = '<div class="map-legend-title">Supply Origins by Category</div><div class="map-legend-items">';
+  Object.keys(CATEGORY_COLORS).forEach(function(cat) {
+    html += '<div class="map-legend-item">' +
+      '<span class="map-legend-dot" style="background:' + CATEGORY_COLORS[cat] + '"></span>' +
+      '<span class="map-legend-label">' + cat + '</span></div>';
+  });
+  html += '</div>';
+  
+  html += '<div class="map-legend-title" style="margin-top:var(--space-3)">Chokepoint Status</div><div class="map-legend-items">';
+  html += '<div class="map-legend-item"><span class="map-legend-dot" style="background:var(--color-risk-low)"></span><span class="map-legend-label">Open</span></div>';
+  html += '<div class="map-legend-item"><span class="map-legend-dot" style="background:var(--color-risk-medium)"></span><span class="map-legend-label">Restricted</span></div>';
+  html += '<div class="map-legend-item"><span class="map-legend-dot" style="background:var(--color-risk-high)"></span><span class="map-legend-label">Closed</span></div>';
+  html += '</div>';
+  
+  html += '<div class="map-legend-title" style="margin-top:var(--space-3)">Risk Regions</div><div class="map-legend-items">';
+  html += '<div class="map-legend-item"><span class="map-legend-swatch" style="background:rgba(239,68,68,0.25);border:1px solid rgba(239,68,68,0.5)"></span><span class="map-legend-label">High Risk</span></div>';
+  html += '<div class="map-legend-item"><span class="map-legend-swatch" style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.35)"></span><span class="map-legend-label">Medium Risk</span></div>';
+  html += '</div>';
+  
+  legend.innerHTML = html;
+  container.appendChild(legend);
 }

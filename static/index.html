@@ -92,7 +92,10 @@
       <!-- Dashboard Content (hidden until loaded) -->
       <div id="dashboardLive" style="display:none">
 
-        <!-- 1. Executive Summary Banner -->
+        <!-- 1. KPI Strip — 6 cards -->
+        <div class="kpi-strip" id="kpiStrip"></div>
+
+        <!-- 2. Executive Summary Banner -->
         <div class="exec-banner" id="execBanner">
           <div class="exec-content">
             <h2>Executive Summary</h2>
@@ -108,7 +111,7 @@
           </div>
         </div>
 
-        <!-- 2. Energy Markets + Geopolitical Risk (side by side) -->
+        <!-- 3. Energy Markets (left) | Global Risk Map (right) -->
         <div class="grid-2">
           <div class="card">
             <div class="card-header">
@@ -123,55 +126,22 @@
                   <th>24h</th>
                   <th>7d</th>
                   <th>30d Trend</th>
-                  <th>Driver</th>
                 </tr>
               </thead>
               <tbody id="commodityBody"></tbody>
             </table>
-            <div class="analyst-box">
-              <div class="analyst-label">Analyst Outlook (EIA STEO)</div>
-              <div class="analyst-text" id="analystOutlook">—</div>
-            </div>
           </div>
 
           <div class="card">
             <div class="card-header">
-              <span class="card-title">Geopolitical Risk Monitor</span>
-              <i data-lucide="shield-alert" class="card-icon"></i>
+              <span class="card-title">Global Supply Chain &amp; Risk Map</span>
+              <i data-lucide="globe" class="card-icon"></i>
             </div>
-            <div id="newsStories"></div>
+            <div class="map-container" id="supplyChainMap"></div>
           </div>
         </div>
 
-        <!-- 3. Timeline + Risk Heatmap -->
-        <div class="grid-2">
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">Conflict Escalation Timeline (7 Days)</span>
-              <i data-lucide="git-branch" class="card-icon"></i>
-            </div>
-            <div class="timeline" id="timeline"></div>
-          </div>
-
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">Regional Risk Heatmap</span>
-              <i data-lucide="map" class="card-icon"></i>
-            </div>
-            <div class="heatmap-grid" id="heatmap"></div>
-          </div>
-        </div>
-
-        <!-- 3b. Global Supply Chain Map -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">Global Supply Chain &amp; Risk Map</span>
-            <i data-lucide="globe" class="card-icon"></i>
-          </div>
-          <div class="map-container" id="supplyChainMap"></div>
-        </div>
-
-        <!-- 4. Shipping & Supply Chain -->
+        <!-- 4. Chokepoint Status (left) | Container Freight Rates (right) -->
         <div class="grid-2">
           <div class="card">
             <div class="card-header">
@@ -183,18 +153,43 @@
 
           <div class="card">
             <div class="card-header">
-              <span class="card-title">Shipping Alerts</span>
-              <i data-lucide="alert-triangle" class="card-icon"></i>
+              <span class="card-title">Container Freight Rates</span>
+              <i data-lucide="truck" class="card-icon"></i>
             </div>
-            <div id="shippingAlerts"></div>
-            <div class="analyst-box" style="margin-top: var(--space-4)">
-              <div class="analyst-label">Commodity Drivers</div>
-              <div class="analyst-text" id="commodityDrivers">—</div>
-            </div>
+            <table class="freight-table">
+              <thead>
+                <tr>
+                  <th>Route</th>
+                  <th>20ft Rate</th>
+                  <th>7d</th>
+                  <th>Conflict Impact</th>
+                </tr>
+              </thead>
+              <tbody id="freightBody"></tbody>
+            </table>
           </div>
         </div>
 
-        <!-- 5. Procurement Category Exposure -->
+        <!-- 5. Geopolitical Risk Monitor (left) | Timeline (right) -->
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Geopolitical Risk Monitor</span>
+              <i data-lucide="shield-alert" class="card-icon"></i>
+            </div>
+            <div id="newsStories"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Conflict Escalation Timeline (7 Days)</span>
+              <i data-lucide="git-branch" class="card-icon"></i>
+            </div>
+            <div class="timeline" id="timeline"></div>
+          </div>
+        </div>
+
+        <!-- 6. Procurement Category Exposure Matrix — full width -->
         <div class="card">
           <div class="card-header">
             <span class="card-title">Procurement Category Exposure Matrix</span>
@@ -215,6 +210,9 @@
             </table>
           </div>
         </div>
+
+        <!-- 7. COGS Outlook — small full-width bar -->
+        <div class="cogs-outlook" id="cogsOutlook"></div>
 
       </div>
 
