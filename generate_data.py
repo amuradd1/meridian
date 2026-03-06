@@ -32,11 +32,41 @@ CANONICAL_CATEGORIES = [
 ]
 
 # ── IMF PortWatch chokepoint mapping ──
+# reroute_days: extra transit days when ships divert via Cape of Good Hope (or Lombok/Sunda for Malacca).
+# These are well-established industry figures based on Asia→Europe / Gulf→Europe routing.
 PORTWATCH_CHOKEPOINTS = {
-    "chokepoint6": {"name": "Strait of Hormuz", "display": "Strait of Hormuz"},
-    "chokepoint4": {"name": "Bab el-Mandeb Strait", "display": "Bab el-Mandeb / Red Sea"},
-    "chokepoint1": {"name": "Suez Canal", "display": "Suez Canal"},
-    "chokepoint5": {"name": "Malacca Strait", "display": "Malacca Strait"},
+    "chokepoint6": {
+        "name": "Strait of Hormuz",
+        "display": "Strait of Hormuz",
+        "reroute_via": "Cape of Good Hope",
+        "reroute_days_low": 7,
+        "reroute_days_high": 12,
+        "reroute_note": "Gulf→Europe/Asia via Cape of Good Hope",
+    },
+    "chokepoint4": {
+        "name": "Bab el-Mandeb Strait",
+        "display": "Bab el-Mandeb / Red Sea",
+        "reroute_via": "Cape of Good Hope",
+        "reroute_days_low": 10,
+        "reroute_days_high": 14,
+        "reroute_note": "Asia→Europe rerouted via Cape of Good Hope",
+    },
+    "chokepoint1": {
+        "name": "Suez Canal",
+        "display": "Suez Canal",
+        "reroute_via": "Cape of Good Hope",
+        "reroute_days_low": 10,
+        "reroute_days_high": 14,
+        "reroute_note": "Asia→Europe rerouted via Cape of Good Hope",
+    },
+    "chokepoint5": {
+        "name": "Malacca Strait",
+        "display": "Malacca Strait",
+        "reroute_via": "Lombok / Sunda Strait",
+        "reroute_days_low": 2,
+        "reroute_days_high": 4,
+        "reroute_note": "SE Asia→Indian Ocean via Lombok or Sunda Strait",
+    },
 }
 
 
@@ -293,17 +323,27 @@ async def fetch_chokepoint_transit():
                 alert_level = alert_info["alert"]
                 if alert_level == "RED" and STATUS_ORDER.get(status, 0) < STATUS_ORDER.get("RESTRICTED", 1):
                     status = "RESTRICTED"
-                    # Estimate delay from transit drop magnitude even if 7d avg looks fine
-                    delay_hours = max(delay_hours, 24)
                     print(f"    {display}: Elevated to RESTRICTED (RED alert active: {alert_info['event']})")
                 elif alert_level == "ORANGE" and STATUS_ORDER.get(status, 0) < STATUS_ORDER.get("RESTRICTED", 1):
                     status = "RESTRICTED"
-                    delay_hours = max(delay_hours, 12)
 
-            # Compute delay_days for the KPI card (based on rerouting impact)
-            # Even if transit volume hasn't dropped yet, an active RED alert implies delays
-            # Use capacity-weighted rerouting estimates
-            if status == "OPEN":
+            # ── Rerouting delay model ──
+            # When a chokepoint is RESTRICTED or CLOSED, ships reroute via Cape of Good Hope
+            # (or Lombok/Sunda for Malacca). The real-world delay is the extra transit days
+            # from rerouting — NOT derived from volume drop magnitude.
+            # Volume may look "normal" simply because ships are avoiding the chokepoint entirely.
+            reroute_active = False
+            reroute_days_low = cp_info.get("reroute_days_low", 0)
+            reroute_days_high = cp_info.get("reroute_days_high", 0)
+            reroute_via = cp_info.get("reroute_via", "")
+            reroute_note = cp_info.get("reroute_note", "")
+
+            if status in ("RESTRICTED", "CLOSED"):
+                reroute_active = True
+                # Use midpoint of rerouting range, converted to hours
+                delay_hours = int(((reroute_days_low + reroute_days_high) / 2) * 24)
+                print(f"    {display}: Rerouting delay +{reroute_days_low}-{reroute_days_high}d via {reroute_via}")
+            else:
                 delay_hours = 0
 
             containers = [r.get("n_container", 0) for r in records]
@@ -325,6 +365,11 @@ async def fetch_chokepoint_transit():
                 "history_7d": totals[-7:],
                 "alert_level": alert_info["alert"] if alert_info else None,
                 "alert_event": alert_info["event"] if alert_info else None,
+                "reroute_active": reroute_active,
+                "reroute_via": reroute_via if reroute_active else None,
+                "reroute_days_low": reroute_days_low if reroute_active else None,
+                "reroute_days_high": reroute_days_high if reroute_active else None,
+                "reroute_note": reroute_note if reroute_active else None,
             }
             print(f"    {display}: {latest} transits (30d avg: {baseline_avg:.0f}, 7d avg: {avg_7d:.0f}, 7d Δ: {pct_change_7d:+.1f}%) → {status} (delay: {delay_hours}h)")
 
@@ -682,6 +727,11 @@ WRITING QUALITY:
                 cp["transit_history_7d"] = pw["history_7d"]
                 cp["alert_level"] = pw.get("alert_level")
                 cp["alert_event"] = pw.get("alert_event")
+                cp["reroute_active"] = pw.get("reroute_active", False)
+                cp["reroute_via"] = pw.get("reroute_via")
+                cp["reroute_days_low"] = pw.get("reroute_days_low")
+                cp["reroute_days_high"] = pw.get("reroute_days_high")
+                cp["reroute_note"] = pw.get("reroute_note")
 
     # ── Post-process: Stabilise procurement categories ──
     prev_data = load_previous_data()

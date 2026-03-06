@@ -641,6 +641,37 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   font-style: italic;
 }
 
+.chokepoint-reroute {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: var(--radius-sm);
+}
+
+.reroute-icon {
+  font-size: var(--text-sm);
+  color: #38bdf8;
+  line-height: 1;
+}
+
+.reroute-text {
+  font-size: 0.5625rem;
+  color: #38bdf8;
+  font-weight: 600;
+  flex: 1;
+}
+
+.reroute-delay {
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: #38bdf8;
+  white-space: nowrap;
+}
+
 /* ─── Chokepoint Transit KPIs (PortWatch) ─── */
 .chokepoint-transit {
   margin-top: var(--space-2);

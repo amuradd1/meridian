@@ -315,8 +315,18 @@ function renderChokepoints(chokepoints) {
         '</div>' +
       '</div>' +
       (cp.alert_event ? '<div class="chokepoint-alert-event">' + cp.alert_event + '</div>' : '') +
-      '<div class="chokepoint-detail">' + (cp.detail || 'No current alerts.') + '</div>' +
-      (cp.delay_hours > 0 ? '<div class="chokepoint-delay">Est. delay: +' + cp.delay_hours + 'h</div>' : '');
+      '<div class="chokepoint-detail">' + (cp.detail || 'No current alerts.') + '</div>';
+
+    // Rerouting context — show when active, replaces the old delay_hours line
+    if (cp.reroute_active && cp.reroute_via) {
+      html += '<div class="chokepoint-reroute">' +
+        '<span class="reroute-icon">⤴</span>' +
+        '<span class="reroute-text">Diverted via ' + cp.reroute_via + '</span>' +
+        '<span class="reroute-delay">+' + cp.reroute_days_low + '–' + cp.reroute_days_high + ' days</span>' +
+      '</div>';
+    } else if (cp.delay_hours > 0) {
+      html += '<div class="chokepoint-delay">Est. delay: +' + cp.delay_hours + 'h</div>';
+    }
 
     if (hasTransit) {
       var pct7dSign = pctChange7d > 0 ? '+' : '';
