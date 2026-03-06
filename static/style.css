@@ -115,6 +115,15 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   gap: var(--space-4);
 }
 
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
 .header-left {
   display: flex;
   align-items: center;
@@ -155,6 +164,11 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   padding: var(--space-4) var(--space-6);
 }
 
+.main-inner {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
 /* ─── Cards ─── */
 .card {
   background: var(--color-surface);
@@ -189,8 +203,6 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   display: grid;
   gap: var(--space-4);
   grid-template-columns: 1fr;
-  max-width: 1600px;
-  margin: 0 auto;
 }
 
 .grid-2 {
@@ -865,6 +877,99 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   text-decoration: none;
 }
 .dashboard-footer a:hover { color: var(--color-primary); }
+
+/* ─── Sources & Methodology ─── */
+.sources-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.sources-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--space-3) var(--space-5);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-faint);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  font-family: var(--font-body);
+  letter-spacing: 0.04em;
+  transition: color var(--transition-interactive);
+}
+
+.sources-toggle:hover {
+  color: var(--color-text-muted);
+}
+
+.sources-chevron {
+  transition: transform var(--transition-interactive);
+  flex-shrink: 0;
+}
+
+.sources-toggle[aria-expanded="true"] .sources-chevron {
+  transform: rotate(180deg);
+}
+
+.sources-body {
+  display: none;
+  padding: 0 var(--space-5) var(--space-4);
+  border-top: 1px solid var(--color-divider);
+}
+
+.sources-body.open {
+  display: block;
+}
+
+.sources-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3) var(--space-8);
+  margin-bottom: var(--space-3);
+}
+
+@media (max-width: 768px) {
+  .sources-grid { grid-template-columns: 1fr; }
+}
+
+.source-item {
+  display: flex;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.source-item-label {
+  font-weight: 600;
+  color: var(--color-text-faint);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.source-item a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.source-item a:hover {
+  text-decoration: underline;
+}
+
+.sources-meta {
+  font-size: 0.625rem;
+  color: var(--color-text-faint);
+  border-top: 1px solid var(--color-divider);
+  padding-top: var(--space-2);
+  display: flex;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+}
 
 /* ─── Supply Chain Map ─── */
 .map-container {

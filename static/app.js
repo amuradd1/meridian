@@ -343,6 +343,45 @@ function renderCOGSOutlook(text) {
   '</div>';
 }
 
+function renderSources(timestamp) {
+  var body = document.getElementById('sourcesBody');
+  if (!body) { return; }
+
+  var tsStr = '—';
+  if (timestamp) {
+    try { tsStr = new Date(timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }); }
+    catch (e) { tsStr = timestamp; }
+  }
+
+  var html = '<div class="sources-grid" style="padding-top:var(--space-3)">' +
+    '<div class="source-item"><span class="source-item-label">Commodity Prices:</span> <a href="https://finance.yahoo.com" target="_blank" rel="noopener noreferrer">Yahoo Finance</a> (delayed)</div>' +
+    '<div class="source-item"><span class="source-item-label">News Headlines:</span> <a href="https://news.google.com" target="_blank" rel="noopener noreferrer">Google News RSS</a></div>' +
+    '<div class="source-item"><span class="source-item-label">LNG Estimates:</span> TTF proxy &times; 1.15 multiplier for JKM</div>' +
+    '<div class="source-item"><span class="source-item-label">Freight Rates:</span> LLM-estimated based on market data and news context (indicative only)</div>' +
+    '<div class="source-item"><span class="source-item-label">Intelligence Analysis:</span> <a href="https://www.anthropic.com" target="_blank" rel="noopener noreferrer">Claude AI (Anthropic)</a></div>' +
+    '<div class="source-item"><span class="source-item-label">Map Data:</span> <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener noreferrer">Natural Earth</a> via world-atlas</div>' +
+  '</div>' +
+  '<div class="sources-meta">' +
+    '<span>Data generated: ' + tsStr + '</span>' +
+    '<span>Model: Claude (Anthropic)</span>' +
+  '</div>';
+
+  body.innerHTML = html;
+}
+
+// Sources toggle
+(function() {
+  var toggle = document.getElementById('sourcesToggle');
+  var body = document.getElementById('sourcesBody');
+  if (toggle && body) {
+    toggle.addEventListener('click', function() {
+      var expanded = toggle.getAttribute('aria-expanded') === 'true';
+      toggle.setAttribute('aria-expanded', String(!expanded));
+      body.classList.toggle('open');
+    });
+  }
+})();
+
 // ─── Data Fetching ───
 function fetchIntelligence() {
   var loadingEl = document.getElementById('loadingState');
@@ -395,6 +434,7 @@ function fetchIntelligence() {
       renderFreightRates(intel.container_freight_rates);
       renderProcurement(intel.procurement_categories);
       renderCOGSOutlook(intel.cogs_outlook);
+      renderSources(data.timestamp);
 
       // Show dashboard first
       loadingEl.style.display = 'none';
@@ -403,7 +443,7 @@ function fetchIntelligence() {
       // Render map AFTER layout is visible so container has dimensions
       requestAnimationFrame(function() {
         if (typeof renderSupplyChainMap === 'function') {
-          renderSupplyChainMap(intel.chokepoint_status, intel.risk_heatmap);
+          renderSupplyChainMap(intel.chokepoint_status);
         }
       });
 
@@ -431,71 +471,76 @@ function generatePDFContent() {
   var kpi = intel.kpi_summary || {};
   var dateStr = new Date().toISOString().slice(0, 10);
 
-  // Build inline-styled HTML for PDF
-  var s = 'font-family:Inter,system-ui,sans-serif;color:#e2e8f0;';
-  var sH = 'font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#94a3b8;margin-bottom:4px;';
-  var sBorder = 'border-bottom:1px solid #1e2d40;';
+  // Shared inline styles
+  var bg = '#0c1220';
+  var surface = '#111827';
+  var border = '#1e2d40';
+  var textPrimary = '#e2e8f0';
+  var textMuted = '#94a3b8';
+  var textFaint = '#64748b';
+  var accent = '#38bdf8';
 
-  var html = '<div style="' + s + 'background:#0c1220;padding:16px 20px;width:100%;box-sizing:border-box;">';
-
-  // Header
   var riskColor = intel.overall_risk === 'HIGH' ? '#ef4444' : (intel.overall_risk === 'LOW' ? '#22c55e' : '#f59e0b');
-  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;' + sBorder + 'padding-bottom:8px;">';
-  html += '<div style="font-size:11px;font-weight:700;color:#e2e8f0;">Daily Geopolitical & Energy Procurement Intelligence Brief</div>';
-  html += '<div style="display:flex;gap:12px;align-items:center;">';
-  html += '<span style="font-size:8px;color:#94a3b8;">' + dateStr + '</span>';
-  html += '<span style="font-size:8px;font-weight:700;color:' + riskColor + ';background:rgba(0,0,0,0.3);padding:2px 8px;border-radius:4px;">' + (intel.overall_risk || 'MEDIUM') + ' RISK</span>';
+
+  var html = '<div style="font-family:Inter,system-ui,-apple-system,sans-serif;color:' + textPrimary + ';background:' + bg + ';padding:18px 22px;width:100%;box-sizing:border-box;">';
+
+  // ── Title Bar ──
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid ' + border + ';padding-bottom:10px;margin-bottom:12px;">';
+  html += '<div style="font-size:13px;font-weight:700;letter-spacing:-0.01em;">Daily Geopolitical & Energy Procurement Intelligence Brief</div>';
+  html += '<div style="display:flex;gap:14px;align-items:center;">';
+  html += '<span style="font-size:9px;color:' + textMuted + ';">' + dateStr + '</span>';
+  html += '<span style="font-size:9px;font-weight:700;color:' + riskColor + ';background:rgba(0,0,0,0.4);padding:3px 10px;border-radius:4px;border:1px solid ' + riskColor + ';">' + (intel.overall_risk || 'MEDIUM') + ' RISK</span>';
   html += '</div></div>';
 
-  // KPI Strip
-  html += '<div style="display:flex;gap:8px;margin-bottom:10px;">';
+  // ── KPI Strip — 6 items ──
+  html += '<div style="display:flex;gap:8px;margin-bottom:12px;">';
   var kpiItems = [
     ['COGS Pressure', kpi.overall_cogs_pressure || 'STABLE'],
-    ['Energy Trend', (kpi.energy_cost_trend || 'STABLE').split('—')[0].split(' - ')[0].trim()],
-    ['Disruption', kpi.supply_chain_disruption_level || 'MODERATE'],
-    ['Ship Delay', (kpi.avg_shipping_delay_days != null ? kpi.avg_shipping_delay_days + 'd' : '—')],
-    ['Chokepoints', (kpi.active_chokepoint_disruptions != null ? kpi.active_chokepoint_disruptions + '/4' : '—')],
-    ['High Risk', (kpi.categories_at_high_risk != null ? kpi.categories_at_high_risk + '/7' : '—')]
+    ['Energy Trend', (kpi.energy_cost_trend || 'STABLE').split('\u2014')[0].split(' - ')[0].split(' \u2013 ')[0].trim()],
+    ['Disruption Level', kpi.supply_chain_disruption_level || 'MODERATE'],
+    ['Avg Ship Delay', (kpi.avg_shipping_delay_days != null ? kpi.avg_shipping_delay_days + ' days' : '\u2014')],
+    ['Chokepoint Issues', (kpi.active_chokepoint_disruptions != null ? kpi.active_chokepoint_disruptions + ' / 4' : '\u2014')],
+    ['High-Risk Categories', (kpi.categories_at_high_risk != null ? kpi.categories_at_high_risk + ' / 7' : '\u2014')]
   ];
   kpiItems.forEach(function(k) {
-    html += '<div style="flex:1;background:#111827;border:1px solid #1e2d40;border-radius:4px;padding:4px 6px;text-align:center;">';
-    html += '<div style="font-size:9px;font-weight:700;color:#e2e8f0;">' + k[1] + '</div>';
-    html += '<div style="font-size:6px;color:#64748b;text-transform:uppercase;">' + k[0] + '</div>';
+    html += '<div style="flex:1;background:' + surface + ';border:1px solid ' + border + ';border-radius:4px;padding:6px 6px 5px;text-align:center;">';
+    html += '<div style="font-size:10px;font-weight:700;color:' + textPrimary + ';line-height:1.2;">' + k[1] + '</div>';
+    html += '<div style="font-size:6.5px;color:' + textFaint + ';text-transform:uppercase;letter-spacing:0.04em;margin-top:2px;">' + k[0] + '</div>';
     html += '</div>';
   });
   html += '</div>';
 
-  // Exec Summary
-  html += '<div style="margin-bottom:8px;">';
-  html += '<div style="' + sH + '">Executive Summary</div>';
+  // ── Executive Summary — 5 bullets ──
+  html += '<div style="margin-bottom:10px;">';
+  html += '<div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:' + textFaint + ';margin-bottom:4px;">Executive Summary</div>';
   if (Array.isArray(intel.executive_summary)) {
-    intel.executive_summary.forEach(function(b) {
-      html += '<div style="font-size:7px;color:#cbd5e1;margin-bottom:2px;padding-left:8px;position:relative;">';
-      html += '<span style="position:absolute;left:0;color:#38bdf8;">•</span>' + b;
+    intel.executive_summary.slice(0, 5).forEach(function(b) {
+      html += '<div style="font-size:8px;color:#cbd5e1;margin-bottom:3px;padding-left:10px;position:relative;line-height:1.45;">';
+      html += '<span style="position:absolute;left:0;color:' + accent + ';font-size:9px;">\u2022</span>' + b;
       html += '</div>';
     });
   }
   html += '</div>';
 
-  // Two-column: Commodities | Chokepoints + Freight
-  html += '<div style="display:flex;gap:10px;margin-bottom:8px;">';
+  // ── Two-column: Energy Markets | Chokepoints + Freight ──
+  html += '<div style="display:flex;gap:12px;margin-bottom:10px;">';
 
-  // Left: Commodities
+  // Left: Energy Markets
   html += '<div style="flex:1;">';
-  html += '<div style="' + sH + '">Energy Markets</div>';
-  html += '<table style="width:100%;border-collapse:collapse;font-size:7px;">';
-  html += '<tr style="color:#64748b;font-size:6px;text-transform:uppercase;"><th style="text-align:left;padding:2px;">Commodity</th><th style="text-align:right;padding:2px;">Price</th><th style="text-align:right;padding:2px;">24h</th><th style="text-align:right;padding:2px;">7d</th></tr>';
+  html += '<div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:' + textFaint + ';margin-bottom:4px;">Energy Markets</div>';
+  html += '<table style="width:100%;border-collapse:collapse;">';
+  html += '<tr style="border-bottom:1px solid ' + border + ';"><th style="text-align:left;padding:2px 3px;font-size:7px;color:' + textFaint + ';font-weight:600;">Commodity</th><th style="text-align:right;padding:2px 3px;font-size:7px;color:' + textFaint + ';font-weight:600;">Price</th><th style="text-align:right;padding:2px 3px;font-size:7px;color:' + textFaint + ';font-weight:600;">24h</th><th style="text-align:right;padding:2px 3px;font-size:7px;color:' + textFaint + ';font-weight:600;">7d</th></tr>';
   if (data.commodities) {
     data.commodities.forEach(function(c) {
       var c24 = c.change_24h || 0;
       var c7 = c.change_7d || 0;
-      var col24 = c24 > 0 ? '#22c55e' : (c24 < 0 ? '#ef4444' : '#94a3b8');
-      var col7 = c7 > 0 ? '#22c55e' : (c7 < 0 ? '#ef4444' : '#94a3b8');
-      html += '<tr style="' + sBorder + '">';
-      html += '<td style="padding:2px;color:#e2e8f0;">' + c.name + '</td>';
-      html += '<td style="padding:2px;text-align:right;color:#e2e8f0;">' + c.price.toFixed(2) + '</td>';
-      html += '<td style="padding:2px;text-align:right;color:' + col24 + ';">' + (c24 > 0 ? '+' : '') + c24.toFixed(2) + '%</td>';
-      html += '<td style="padding:2px;text-align:right;color:' + col7 + ';">' + (c7 > 0 ? '+' : '') + c7.toFixed(2) + '%</td>';
+      var col24 = c24 > 0 ? '#22c55e' : (c24 < 0 ? '#ef4444' : textMuted);
+      var col7 = c7 > 0 ? '#22c55e' : (c7 < 0 ? '#ef4444' : textMuted);
+      html += '<tr style="border-bottom:1px solid ' + border + ';">';
+      html += '<td style="padding:3px;font-size:8px;color:' + textPrimary + ';font-weight:500;">' + c.name + '</td>';
+      html += '<td style="padding:3px;text-align:right;font-size:8px;color:' + textPrimary + ';font-weight:600;">' + c.price.toFixed(2) + ' <span style="font-size:6px;color:' + textFaint + ';">' + c.unit + '</span></td>';
+      html += '<td style="padding:3px;text-align:right;font-size:8px;color:' + col24 + ';">' + (c24 > 0 ? '+' : '') + c24.toFixed(2) + '%</td>';
+      html += '<td style="padding:3px;text-align:right;font-size:8px;color:' + col7 + ';">' + (c7 > 0 ? '+' : '') + c7.toFixed(2) + '%</td>';
       html += '</tr>';
     });
   }
@@ -503,56 +548,67 @@ function generatePDFContent() {
 
   // Right: Chokepoints + Freight
   html += '<div style="flex:1;">';
-  html += '<div style="' + sH + '">Chokepoint Status</div>';
+  html += '<div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:' + textFaint + ';margin-bottom:4px;">Chokepoint Status</div>';
   if (intel.chokepoint_status) {
     intel.chokepoint_status.forEach(function(cp) {
       var sc = cp.status === 'OPEN' ? '#22c55e' : (cp.status === 'CLOSED' ? '#ef4444' : '#f59e0b');
-      html += '<div style="display:flex;justify-content:space-between;font-size:7px;padding:1px 0;' + sBorder + '">';
-      html += '<span style="color:#e2e8f0;">' + cp.name + '</span>';
-      html += '<span style="color:' + sc + ';font-weight:600;">' + cp.status + (cp.delay_hours > 0 ? ' (+' + cp.delay_hours + 'h)' : '') + '</span>';
+      html += '<div style="display:flex;justify-content:space-between;font-size:8px;padding:2px 0;border-bottom:1px solid ' + border + ';">';
+      html += '<span style="color:' + textPrimary + ';">' + cp.name + '</span>';
+      html += '<span style="color:' + sc + ';font-weight:700;">' + cp.status + (cp.delay_hours > 0 ? ' (+' + cp.delay_hours + 'h)' : '') + '</span>';
       html += '</div>';
     });
   }
-  html += '<div style="' + sH + 'margin-top:6px;">Freight Rates</div>';
+  html += '<div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:' + textFaint + ';margin-top:8px;margin-bottom:4px;">Container Freight Rates</div>';
   if (intel.container_freight_rates) {
-    html += '<table style="width:100%;border-collapse:collapse;font-size:6.5px;">';
-    html += '<tr style="color:#64748b;font-size:6px;"><th style="text-align:left;padding:1px;">Route</th><th style="text-align:right;padding:1px;">Rate</th><th style="text-align:right;padding:1px;">7d</th></tr>';
+    html += '<table style="width:100%;border-collapse:collapse;">';
+    html += '<tr style="border-bottom:1px solid ' + border + ';"><th style="text-align:left;padding:2px;font-size:7px;color:' + textFaint + ';font-weight:600;">Route</th><th style="text-align:right;padding:2px;font-size:7px;color:' + textFaint + ';font-weight:600;">20ft</th><th style="text-align:right;padding:2px;font-size:7px;color:' + textFaint + ';font-weight:600;">7d</th></tr>';
     intel.container_freight_rates.forEach(function(fr) {
-      html += '<tr style="' + sBorder + '"><td style="padding:1px;color:#e2e8f0;">' + fr.route + '</td><td style="padding:1px;text-align:right;color:#e2e8f0;">' + fr.rate_20ft + '</td><td style="padding:1px;text-align:right;color:#94a3b8;">' + fr.change_7d + '</td></tr>';
+      var chg = fr.change_7d || '';
+      var chgCol = chg.indexOf('+') !== -1 ? '#ef4444' : (chg.indexOf('-') !== -1 ? '#22c55e' : textMuted);
+      html += '<tr style="border-bottom:1px solid ' + border + ';">';
+      html += '<td style="padding:2px;font-size:7.5px;color:' + textPrimary + ';">' + fr.route + '</td>';
+      html += '<td style="padding:2px;text-align:right;font-size:7.5px;color:' + textPrimary + ';font-weight:600;">' + fr.rate_20ft + '</td>';
+      html += '<td style="padding:2px;text-align:right;font-size:7.5px;color:' + chgCol + ';">' + chg + '</td>';
+      html += '</tr>';
     });
     html += '</table>';
   }
   html += '</div>';
   html += '</div>';
 
-  // Procurement Matrix
-  html += '<div style="margin-bottom:8px;">';
-  html += '<div style="' + sH + '">Procurement Category Exposure</div>';
-  html += '<table style="width:100%;border-collapse:collapse;font-size:6.5px;">';
-  html += '<tr style="color:#64748b;font-size:6px;text-transform:uppercase;"><th style="text-align:left;padding:2px;">Category</th><th style="padding:2px;">Energy</th><th style="padding:2px;">Risk</th><th style="text-align:left;padding:2px;">Mitigation</th></tr>';
+  // ── Procurement Category Exposure Matrix ──
+  html += '<div style="margin-bottom:10px;">';
+  html += '<div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:' + textFaint + ';margin-bottom:4px;">Procurement Category Exposure</div>';
+  html += '<table style="width:100%;border-collapse:collapse;">';
+  html += '<tr style="border-bottom:1px solid ' + border + ';"><th style="text-align:left;padding:2px 3px;font-size:7px;color:' + textFaint + ';font-weight:600;">Category</th><th style="text-align:center;padding:2px 3px;font-size:7px;color:' + textFaint + ';font-weight:600;">Energy</th><th style="text-align:center;padding:2px 3px;font-size:7px;color:' + textFaint + ';font-weight:600;">Risk</th><th style="text-align:left;padding:2px 3px;font-size:7px;color:' + textFaint + ';font-weight:600;">Mitigation</th></tr>';
   if (intel.procurement_categories) {
     intel.procurement_categories.forEach(function(cat) {
-      var rc = cat.risk === 'H' || cat.risk === 'HIGH' ? '#ef4444' : (cat.risk === 'L' || cat.risk === 'LOW' ? '#22c55e' : '#f59e0b');
-      html += '<tr style="' + sBorder + '">';
-      html += '<td style="padding:2px;color:#e2e8f0;">' + cat.name + '</td>';
-      html += '<td style="padding:2px;text-align:center;color:#94a3b8;">' + (cat.energy_sensitivity || '—') + '</td>';
-      html += '<td style="padding:2px;text-align:center;color:' + rc + ';font-weight:600;">' + (cat.risk || '—') + '</td>';
-      html += '<td style="padding:2px;color:#94a3b8;">' + (cat.suggested_mitigation || '—') + '</td>';
+      var riskVal = (cat.risk || '').toUpperCase();
+      var rc = (riskVal === 'H' || riskVal === 'HIGH') ? '#ef4444' : ((riskVal === 'L' || riskVal === 'LOW') ? '#22c55e' : '#f59e0b');
+      var riskBg = (riskVal === 'H' || riskVal === 'HIGH') ? 'rgba(239,68,68,0.12)' : ((riskVal === 'L' || riskVal === 'LOW') ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)');
+      html += '<tr style="border-bottom:1px solid ' + border + ';background:' + riskBg + ';">';
+      html += '<td style="padding:3px;font-size:8px;color:' + textPrimary + ';font-weight:600;">' + cat.name + '</td>';
+      html += '<td style="padding:3px;text-align:center;font-size:8px;color:' + textMuted + ';">' + (cat.energy_sensitivity || '\u2014') + '</td>';
+      html += '<td style="padding:3px;text-align:center;font-size:8px;color:' + rc + ';font-weight:700;">' + (cat.risk || '\u2014') + '</td>';
+      html += '<td style="padding:3px;font-size:7.5px;color:' + textMuted + ';">' + (cat.suggested_mitigation || '\u2014') + '</td>';
       html += '</tr>';
     });
   }
   html += '</table></div>';
 
-  // COGS Outlook
+  // ── COGS Outlook Bar ──
   if (intel.cogs_outlook) {
-    html += '<div style="background:#111827;border:1px solid #1e2d40;border-radius:4px;padding:4px 8px;margin-bottom:6px;">';
-    html += '<span style="font-size:7px;font-weight:700;color:#38bdf8;text-transform:uppercase;margin-right:8px;">COGS Outlook</span>';
-    html += '<span style="font-size:7px;color:#cbd5e1;">' + intel.cogs_outlook + '</span>';
+    html += '<div style="background:' + surface + ';border:1px solid ' + border + ';border-radius:4px;padding:6px 10px;margin-bottom:10px;display:flex;gap:10px;align-items:baseline;">';
+    html += '<span style="font-size:8px;font-weight:700;color:' + accent + ';text-transform:uppercase;letter-spacing:0.04em;flex-shrink:0;">COGS Outlook</span>';
+    html += '<span style="font-size:8px;color:#cbd5e1;line-height:1.4;">' + intel.cogs_outlook + '</span>';
     html += '</div>';
   }
 
-  // Footer
-  html += '<div style="font-size:6px;color:#475569;text-align:center;margin-top:4px;">Generated ' + new Date().toISOString() + ' | Created with Perplexity Computer</div>';
+  // ── Sources Footer ──
+  var genTime = data.timestamp ? new Date(data.timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : new Date().toISOString().slice(0, 16);
+  html += '<div style="font-size:6.5px;color:' + textFaint + ';text-align:center;border-top:1px solid ' + border + ';padding-top:6px;margin-top:2px;">';
+  html += 'Sources: Yahoo Finance, Google News, Claude AI (Anthropic), Natural Earth &nbsp;|&nbsp; Generated ' + genTime;
+  html += '</div>';
 
   html += '</div>';
   return html;

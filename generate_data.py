@@ -216,7 +216,14 @@ RULES:
 - KPI summary: derive from all the data. categories_at_high_risk = count of procurement categories with risk H.
 - Heatmap detail: MAX 8 words per region.
 - Chokepoint detail: MAX 10 words each.
-- Procurement rationale: MAX 1 sentence. suggested_mitigation: MAX 8 words."""
+- Procurement rationale: MAX 1 sentence. suggested_mitigation: MAX 8 words.
+
+WRITING QUALITY:
+- Write complete, grammatically correct sentences — never telegraph-style shorthand.
+- Never reference internal data indices, field names, or system artefacts (e.g. no 'idx', no field labels).
+- Executive summary bullets must read as polished intelligence briefing language suitable for C-suite.
+- Use precise language: 'increased' not 'up', 'approximately' not 'approx'.
+- Each sentence must be self-contained and meaningful without needing context from other sections."""
 
     print("  Calling Claude API...")
     start = time.time()
@@ -245,7 +252,7 @@ RULES:
         while i < len(text):
             ch = text[i]
             if in_string:
-                if ch == '\\':  # skip escaped character
+                if ch == '\\':
                     i += 2
                     continue
                 if ch == '"':
