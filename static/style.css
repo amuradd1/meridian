@@ -739,8 +739,8 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
 
 .transit-top-row {
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .transit-top-row .transit-kpis {
@@ -749,10 +749,9 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
 
 .transit-spark-wrap {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 1px;
-  flex-shrink: 0;
+  gap: var(--space-2);
 }
 
 .transit-spark-wrap canvas {
@@ -1023,18 +1022,8 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
 }
 
 @media (max-width: 1024px) {
-  .transit-top-row {
-    flex-wrap: wrap;
-  }
   .transit-kpis {
     grid-template-columns: repeat(2, 1fr);
-    width: 100%;
-  }
-  .transit-spark-wrap {
-    width: 100%;
-    flex-direction: row;
-    justify-content: center;
-    gap: var(--space-2);
   }
 }
 
@@ -1387,7 +1376,8 @@ button, .btn {
   background: var(--color-surface);
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-sm);
-  padding: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  justify-content: center;
 }
 
 /* Better map legend spacing */
