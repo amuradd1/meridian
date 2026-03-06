@@ -305,43 +305,6 @@ def generate_pdf(data: dict) -> bytes:
     ]))
     story.append(layout_table)
 
-    # ── Container Freight Rates ──
-    freight_rates = intel.get("container_freight_rates", [])
-    if freight_rates:
-        story.append(Paragraph("CONTAINER FREIGHT RATES", styles["section_header"]))
-        freight_header = [
-            Paragraph("<b>ROUTE</b>", styles["table_header"]),
-            Paragraph("<b>20FT RATE</b>", styles["table_header"]),
-            Paragraph("<b>7D</b>", styles["table_header"]),
-            Paragraph("<b>CONFLICT IMPACT</b>", styles["table_header"]),
-        ]
-        freight_rows = [freight_header]
-        for fr in freight_rates[:5]:
-            c7 = fr.get("change_7d", "0%")
-            c7_str = c7 if isinstance(c7, str) else f"{c7:+.1f}%"
-            is_negative = "-" in c7_str
-            col7 = GREEN if is_negative else RED  # lower freight = good
-            freight_rows.append([
-                Paragraph(f'<b>{fr.get("route", "")}</b>', styles["table_cell_bold"]),
-                Paragraph(fr.get("rate_20ft", "—"), styles["table_cell"]),
-                Paragraph(f'<font color="{col7.hexval()}">{c7_str}</font>', styles["table_cell"]),
-                Paragraph(fr.get("conflict_impact", "—"), styles["body_muted"]),
-            ])
-
-        freight_col_widths = [usable_w*0.24, usable_w*0.12, usable_w*0.08, usable_w*0.56]
-        freight_table = Table(freight_rows, colWidths=freight_col_widths)
-        freight_table.setStyle(TableStyle([
-            ("BACKGROUND", (0,0), (-1,0), LIGHT_GRAY),
-            ("LINEBELOW", (0,0), (-1,0), 0.5, BORDER_GRAY),
-            ("LINEBELOW", (0,1), (-1,-1), 0.25, BORDER_GRAY),
-            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-            ("TOPPADDING", (0,0), (-1,-1), 2),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 2),
-            ("LEFTPADDING", (0,0), (-1,-1), 2),
-            ("RIGHTPADDING", (0,0), (-1,-1), 2),
-        ]))
-        story.append(freight_table)
-
     # ── Two-column: Top Stories | Timeline ──
     top_stories = intel.get("top_stories", [])
     timeline_events = intel.get("timeline_events", [])
@@ -535,25 +498,6 @@ def generate_pdf(data: dict) -> bytes:
     proc_table.setStyle(TableStyle(proc_style_cmds))
     story.append(proc_table)
 
-    # ── Top Stories (compact) ──
-    stories_data = intel.get("top_stories", [])
-    if stories_data:
-        story.append(Paragraph("KEY STORIES", styles["section_header"]))
-        for s in stories_data[:3]:
-            relevance = (s.get("relevance", "MEDIUM") or "MEDIUM").upper()
-            rel_col = risk_color({"HIGH":"H","LOW":"L"}.get(relevance, "M"))
-            headline = s.get("headline", "")
-            source = s.get("source", "")
-            summary = s.get("summary", "")
-            story.append(Paragraph(
-                f'<font color="{rel_col.hexval()}">●</font> '
-                f'<b>{headline}</b> '
-                f'<font size="6" color="{TEXT_FAINT.hexval()}">— {source}</font><br/>'
-                f'<font size="6.5" color="{TEXT_MUTED.hexval()}">{summary}</font>',
-                ParagraphStyle("StoryItem", fontName="Helvetica", fontSize=7.5, leading=10,
-                    textColor=TEXT_PRIMARY, spaceBefore=1*mm)
-            ))
-
     # ── Analyst Sentiment (compact) ──
     sentiment = intel.get("analyst_sentiment", {})
     if sentiment:
@@ -617,7 +561,7 @@ def generate_pdf(data: dict) -> bytes:
         except Exception:
             gen_time = timestamp
     story.append(Paragraph(
-        f"Sources: Yahoo Finance, Investing.com (JKM), IMF PortWatch (AIS transit), Google News, Claude AI (Anthropic), Natural Earth &nbsp;|&nbsp; Generated {gen_time}",
+        f"Sources: Yahoo Finance (incl. JKM), IMF PortWatch (AIS transit), Freightos (FBX), Google News, Claude AI (Anthropic) &nbsp;|&nbsp; Generated {gen_time}",
         styles["footer"]
     ))
 
