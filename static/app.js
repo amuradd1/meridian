@@ -241,7 +241,7 @@ function renderNews(stories) {
     return;
   }
 
-  var html = '';
+  var html = '<div class="news-stories-grid">';
   stories.slice(0, 3).forEach(function(s) {
     var relClass = riskClass(s.relevance);
     html += '<div class="story-item">' +
@@ -253,6 +253,7 @@ function renderNews(stories) {
       '<div class="story-summary">' + (s.summary || '') + '</div>' +
     '</div>';
   });
+  html += '</div>';
   container.innerHTML = html;
 }
 

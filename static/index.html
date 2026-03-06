@@ -120,7 +120,7 @@
         </div>
 
         <!-- 3. Energy Markets (left) | Container Freight Rates (right) -->
-        <div class="grid-2">
+        <div class="grid-2 grid-stretch">
           <div class="card">
             <div class="card-header">
               <span class="card-title">Energy Markets</span>
@@ -159,33 +159,23 @@
           </div>
         </div>
 
-        <!-- 4. Chokepoint Corridor Map (left) | Chokepoint Status (right) -->
-        <div class="grid-2">
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">Chokepoint Corridor Map</span>
-              <i data-lucide="globe" class="card-icon"></i>
-            </div>
-            <div class="map-container" id="supplyChainMap"></div>
+        <!-- 4. Chokepoint Corridor Map — full width -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Chokepoint Corridor Map</span>
+            <i data-lucide="globe" class="card-icon"></i>
           </div>
+          <div class="map-container" id="supplyChainMap"></div>
+        </div>
 
+        <!-- 5. Chokepoint Status (left) | Timeline (right) -->
+        <div class="grid-2 grid-stretch">
           <div class="card">
             <div class="card-header">
               <span class="card-title">Chokepoint Status</span>
               <i data-lucide="ship" class="card-icon"></i>
             </div>
             <div class="chokepoint-grid" id="chokepoints"></div>
-          </div>
-        </div>
-
-        <!-- 5. Geopolitical Risk Monitor (left) | Timeline (right) -->
-        <div class="grid-2">
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">Geopolitical Risk Monitor</span>
-              <i data-lucide="shield-alert" class="card-icon"></i>
-            </div>
-            <div id="newsStories"></div>
           </div>
 
           <div class="card">
@@ -195,6 +185,15 @@
             </div>
             <div class="timeline" id="timeline"></div>
           </div>
+        </div>
+
+        <!-- 6. Geopolitical Risk Monitor — full width -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Geopolitical Risk Monitor</span>
+            <i data-lucide="shield-alert" class="card-icon"></i>
+          </div>
+          <div id="newsStories"></div>
         </div>
 
         <!-- 6. Procurement Category Exposure Matrix — full width -->
