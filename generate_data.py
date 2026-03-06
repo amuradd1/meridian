@@ -112,67 +112,6 @@ async def fetch_yahoo(http, symbol, name, unit):
         return None
 
 
-async def fetch_jkm_investing(http):
-    """Fetch live JKM LNG price from investing.com."""
-    import re
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        }
-        r = await http.get(
-            "https://uk.investing.com/commodities/lng-japan-korea-marker-platts-futures",
-            headers=headers,
-        )
-        if r.status_code != 200:
-            print(f"  JKM investing.com status: {r.status_code}")
-            return None
-
-        text = r.text
-        m_last = re.search(r'data-test="instrument-price-last">([0-9.]+)', text)
-        if not m_last:
-            print("  JKM: could not find price on investing.com")
-            return None
-
-        current = float(m_last.group(1))
-        m_pct = re.search(r'data-test="instrument-price-change-percent">\(?([+-]?[0-9.]+)', text)
-        change_pct = float(m_pct.group(1)) if m_pct else 0.0
-
-        r2 = await http.get(
-            "https://uk.investing.com/commodities/lng-japan-korea-marker-platts-futures-historical-data",
-            headers=headers,
-        )
-        history = []
-        if r2.status_code == 200:
-            all_prices = re.findall(r'>([0-9]{1,2}\.[0-9]{2,3})<', r2.text)
-            plausible = [float(p) for p in all_prices if 5.0 <= float(p) <= 80.0]
-            if len(plausible) >= 8:
-                closes = plausible[::4][:20]
-                history = list(reversed(closes))
-
-        change_24h = change_pct
-        change_7d = 0.0
-        if len(history) >= 6:
-            week_ago = history[-6]
-            if week_ago > 0:
-                change_7d = round(((current - week_ago) / week_ago) * 100, 2)
-        elif len(history) >= 2:
-            change_7d = round(((current - history[0]) / history[0]) * 100, 2)
-
-        if not history:
-            history = [current]
-
-        return {
-            "name": "LNG Asia (JKM)",
-            "price": round(current, 2),
-            "unit": "$/MMBtu",
-            "change_24h": round(change_24h, 2),
-            "change_7d": round(change_7d, 2),
-            "history": [round(h, 2) for h in history],
-        }
-    except Exception as e:
-        print(f"  JKM investing.com error: {e}")
-        return None
-
 
 async def fetch_commodities():
     symbols = [
@@ -181,18 +120,18 @@ async def fetch_commodities():
         ("TTF=F", "LNG Europe (TTF)", "EUR/MWh"),
         ("NG=F", "Henry Hub Nat Gas", "$/MMBtu"),
         ("BDRY", "Dry Bulk Shipping (BDRY)", "Index"),
+        ("JKM=F", "LNG Asia (JKM)", "$/MMBtu"),
     ]
     async with httpx.AsyncClient(timeout=20, follow_redirects=True) as http:
         yahoo_tasks = [fetch_yahoo(http, s, n, u) for s, n, u in symbols]
-        jkm_task = fetch_jkm_investing(http)
-        results = await asyncio.gather(*yahoo_tasks, jkm_task)
+        results = await asyncio.gather(*yahoo_tasks)
 
-    commodities = [r for r in results[:-1] if r]
-    jkm = results[-1]
-    if jkm:
-        commodities.append(jkm)
-    else:
-        print("  JKM: falling back to TTF estimate")
+    commodities = [r for r in results if r]
+
+    # If JKM=F fetch failed, fall back to TTF-derived estimate
+    jkm_present = any(c["name"] == "LNG Asia (JKM)" for c in commodities)
+    if not jkm_present:
+        print("  JKM=F: Yahoo fetch failed, falling back to TTF estimate")
         ttf = next((c for c in commodities if "TTF" in c["name"]), None)
         if ttf:
             jkm_fb = dict(ttf)
