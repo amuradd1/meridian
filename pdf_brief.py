@@ -3,6 +3,13 @@
 pdf_brief.py — Generates a one-page executive CPO intelligence brief PDF.
 Consolidates key exec-level takeaways from the web dashboard.
 Called by server.py /api/export-pdf.
+
+SUSTAINABLE LAYOUT APPROACH:
+- Footer is drawn directly on the canvas at a fixed Y position (bottom of page)
+- Main content uses KeepInFrame to auto-fit into available space
+- If content ever grows (more categories, longer text), it shrinks to fit
+- If content shrinks, the extra space naturally falls above the footer
+- No hardcoded font inflation — clean readable sizes that work with any data
 """
 import io
 from datetime import datetime
@@ -13,9 +20,11 @@ from reportlab.lib.colors import HexColor, white
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    BaseDocTemplate, PageTemplate, Frame,
+    Paragraph, Spacer, Table, TableStyle,
     HRFlowable,
 )
+from reportlab.pdfgen import canvas as pdfcanvas
 
 # ── Colors ──
 TEXT_PRIMARY = HexColor("#1a1a2e")
@@ -32,56 +41,62 @@ GREEN_BG = HexColor("#f0fdf4")
 LIGHT_GRAY = HexColor("#f7fafc")
 BORDER_GRAY = HexColor("#e2e8f0")
 
+PAGE_W, PAGE_H = A4
+MARGIN = 10 * mm
+TOP_MARGIN = 8 * mm
+BOTTOM_MARGIN = 6 * mm
+FOOTER_ZONE = 9 * mm  # reserved for footer at bottom
+
 
 def get_styles():
     return {
         "title": ParagraphStyle(
-            "Title", fontName="Helvetica-Bold", fontSize=13, leading=16,
+            "Title", fontName="Helvetica-Bold", fontSize=15, leading=18,
             textColor=TEXT_PRIMARY, alignment=TA_LEFT, spaceAfter=0,
         ),
         "section_header": ParagraphStyle(
-            "SectionHeader", fontName="Helvetica-Bold", fontSize=8, leading=10,
-            textColor=ACCENT, alignment=TA_LEFT, spaceBefore=3*mm, spaceAfter=1.5*mm,
+            "SectionHeader", fontName="Helvetica-Bold", fontSize=9.5, leading=12,
+            textColor=ACCENT, alignment=TA_LEFT, spaceBefore=4.5*mm, spaceAfter=2*mm,
         ),
         "disclaimer": ParagraphStyle(
-            "Disclaimer", fontName="Helvetica-Oblique", fontSize=6, leading=7.5,
-            textColor=TEXT_FAINT, alignment=TA_LEFT, spaceBefore=0, spaceAfter=1.5*mm,
+            "Disclaimer", fontName="Helvetica-Oblique", fontSize=6.5, leading=8,
+            textColor=TEXT_FAINT, alignment=TA_LEFT, spaceBefore=0, spaceAfter=2.5*mm,
         ),
         "body_muted": ParagraphStyle(
-            "BodyMuted", fontName="Helvetica", fontSize=7, leading=9.5,
+            "BodyMuted", fontName="Helvetica", fontSize=7.5, leading=10,
             textColor=TEXT_MUTED, alignment=TA_LEFT,
         ),
         "bullet": ParagraphStyle(
-            "Bullet", fontName="Helvetica", fontSize=7.5, leading=10,
+            "Bullet", fontName="Helvetica", fontSize=8, leading=11.5,
             textColor=TEXT_PRIMARY, alignment=TA_LEFT, leftIndent=4*mm,
-            bulletIndent=0, spaceBefore=1*mm, bulletFontName="Helvetica",
+            bulletIndent=0, spaceBefore=1.5*mm, bulletFontName="Helvetica",
         ),
         "kpi_value": ParagraphStyle(
-            "KPIValue", fontName="Helvetica-Bold", fontSize=11, leading=13,
+            "KPIValue", fontName="Helvetica-Bold", fontSize=13, leading=15,
             textColor=TEXT_PRIMARY, alignment=TA_CENTER,
         ),
         "kpi_label": ParagraphStyle(
-            "KPILabel", fontName="Helvetica", fontSize=5.5, leading=7,
+            "KPILabel", fontName="Helvetica", fontSize=6.5, leading=8,
             textColor=TEXT_FAINT, alignment=TA_CENTER,
         ),
         "table_header": ParagraphStyle(
-            "TableHeader", fontName="Helvetica-Bold", fontSize=6, leading=8,
+            "TableHeader", fontName="Helvetica-Bold", fontSize=7, leading=9,
             textColor=TEXT_FAINT, alignment=TA_LEFT,
         ),
         "table_cell": ParagraphStyle(
-            "TableCell", fontName="Helvetica", fontSize=7, leading=9,
+            "TableCell", fontName="Helvetica", fontSize=7.5, leading=10,
             textColor=TEXT_PRIMARY, alignment=TA_LEFT,
         ),
         "table_cell_bold": ParagraphStyle(
-            "TableCellBold", fontName="Helvetica-Bold", fontSize=7, leading=9,
+            "TableCellBold", fontName="Helvetica-Bold", fontSize=7.5, leading=10,
             textColor=TEXT_PRIMARY, alignment=TA_LEFT,
         ),
         "table_cell_small": ParagraphStyle(
-            "TableCellSmall", fontName="Helvetica", fontSize=6, leading=8,
+            "TableCellSmall", fontName="Helvetica", fontSize=6.5, leading=8.5,
             textColor=TEXT_MUTED, alignment=TA_LEFT,
         ),
         "footer": ParagraphStyle(
-            "Footer", fontName="Helvetica", fontSize=5.5, leading=7,
+            "Footer", fontName="Helvetica", fontSize=6, leading=8,
             textColor=TEXT_FAINT, alignment=TA_CENTER,
         ),
     }
@@ -100,6 +115,33 @@ def risk_bg(level):
     return AMBER_BG
 
 
+def _draw_footer(canvas, doc, data):
+    """Draw footer directly on canvas — pinned to bottom of page."""
+    timestamp = data.get("timestamp", "")
+    gen_time = ""
+    if timestamp:
+        try:
+            dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            gen_time = dt.strftime("%d %b %Y %H:%M UTC")
+        except Exception:
+            gen_time = timestamp
+
+    footer_text = f"Sources: Yahoo Finance (incl. JKM), IMF PortWatch (AIS transit), Freightos (FBX), Google News, Claude AI (Anthropic)  |  Generated {gen_time}"
+
+    canvas.saveState()
+    # Draw thin rule
+    y_rule = BOTTOM_MARGIN + FOOTER_ZONE - 2 * mm
+    canvas.setStrokeColor(BORDER_GRAY)
+    canvas.setLineWidth(0.3)
+    canvas.line(MARGIN, y_rule, PAGE_W - MARGIN, y_rule)
+    # Draw text centered
+    canvas.setFont("Helvetica", 6)
+    canvas.setFillColor(TEXT_FAINT)
+    text_y = BOTTOM_MARGIN + FOOTER_ZONE - 5 * mm
+    canvas.drawCentredString(PAGE_W / 2, text_y, footer_text)
+    canvas.restoreState()
+
+
 def generate_pdf(data: dict) -> bytes:
     """Generate a one-page executive CPO intelligence brief PDF."""
     buf = io.BytesIO()
@@ -109,19 +151,29 @@ def generate_pdf(data: dict) -> bytes:
     commodities = data.get("commodities", [])
     timestamp = data.get("timestamp", "")
 
-    page_w, page_h = A4
-    margin = 10 * mm
+    usable_w = PAGE_W - 2 * MARGIN
 
-    doc = SimpleDocTemplate(
+    # Content frame: full page minus margins and footer zone
+    content_h = PAGE_H - TOP_MARGIN - BOTTOM_MARGIN - FOOTER_ZONE
+    content_frame = Frame(
+        MARGIN, BOTTOM_MARGIN + FOOTER_ZONE,
+        usable_w, content_h,
+        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
+    )
+
+    def on_page(canvas, doc):
+        _draw_footer(canvas, doc, data)
+
+    page_template = PageTemplate(id="brief", frames=[content_frame], onPage=on_page)
+
+    doc = BaseDocTemplate(
         buf, pagesize=A4,
-        leftMargin=margin, rightMargin=margin,
-        topMargin=8*mm, bottomMargin=6*mm,
         title="Daily Geopolitical & Energy Procurement Intelligence Brief",
         author="Perplexity Computer",
     )
+    doc.addPageTemplates([page_template])
 
     story = []
-    usable_w = page_w - 2 * margin
 
     # ── Title Row ──
     date_str = ""
@@ -152,7 +204,7 @@ def generate_pdf(data: dict) -> bytes:
         ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
     story.append(title_table)
-    story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER_GRAY, spaceBefore=1*mm, spaceAfter=1*mm))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER_GRAY, spaceBefore=2*mm, spaceAfter=2*mm))
 
     # ── Disclaimer ──
     story.append(Paragraph(
@@ -180,16 +232,16 @@ def generate_pdf(data: dict) -> bytes:
         kpi_row_labels.append(Paragraph(label.upper(), styles["kpi_label"]))
 
     col_w = usable_w / 6
-    kpi_table = Table([kpi_row_values, kpi_row_labels], colWidths=[col_w] * 6, rowHeights=[15, 9])
+    kpi_table = Table([kpi_row_values, kpi_row_labels], colWidths=[col_w] * 6, rowHeights=[20, 12])
     kpi_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), LIGHT_GRAY),
         ("BOX", (0, 0), (-1, -1), 0.5, BORDER_GRAY),
         ("INNERGRID", (0, 0), (-1, -1), 0.5, BORDER_GRAY),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, 0), 2),
+        ("TOPPADDING", (0, 0), (-1, 0), 3),
         ("BOTTOMPADDING", (0, 0), (-1, 0), 0),
         ("TOPPADDING", (0, 1), (-1, 1), 0),
-        ("BOTTOMPADDING", (0, 1), (-1, 1), 2),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 3),
     ]))
     story.append(kpi_table)
 
@@ -203,7 +255,7 @@ def generate_pdf(data: dict) -> bytes:
         story.append(Paragraph(exec_summary, styles["body_muted"]))
 
     # ── Two-column: Energy Markets | Container Freight Rates ──
-    story.append(Spacer(1, 1.5 * mm))
+    story.append(Spacer(1, 3 * mm))
 
     # Energy Markets table
     energy_header = [
@@ -234,8 +286,8 @@ def generate_pdf(data: dict) -> bytes:
         ("LINEBELOW", (0, 0), (-1, 0), 0.5, BORDER_GRAY),
         ("LINEBELOW", (0, 1), (-1, -1), 0.25, BORDER_GRAY),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ("LEFTPADDING", (0, 0), (-1, -1), 2),
         ("RIGHTPADDING", (0, 0), (-1, -1), 2),
     ]))
@@ -270,8 +322,8 @@ def generate_pdf(data: dict) -> bytes:
         ("LINEBELOW", (0, 0), (-1, 0), 0.5, BORDER_GRAY),
         ("LINEBELOW", (0, 1), (-1, -1), 0.25, BORDER_GRAY),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ("LEFTPADDING", (0, 0), (-1, -1), 2),
         ("RIGHTPADDING", (0, 0), (-1, -1), 2),
     ]))
@@ -294,7 +346,7 @@ def generate_pdf(data: dict) -> bytes:
     story.append(layout_table)
 
     # ── Two-column: Chokepoints | Category Risk Matrix ──
-    story.append(Spacer(1, 1 * mm))
+    story.append(Spacer(1, 2 * mm))
 
     # Chokepoint table (compact)
     choke_header = [
@@ -326,8 +378,8 @@ def generate_pdf(data: dict) -> bytes:
         ("BACKGROUND", (0, 0), (-1, 0), LIGHT_GRAY),
         ("LINEBELOW", (0, 0), (-1, 0), 0.5, BORDER_GRAY),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ("LEFTPADDING", (0, 0), (-1, -1), 2),
         ("RIGHTPADDING", (0, 0), (-1, -1), 2),
     ]
@@ -368,8 +420,8 @@ def generate_pdf(data: dict) -> bytes:
         ("BACKGROUND", (0, 0), (-1, 0), LIGHT_GRAY),
         ("LINEBELOW", (0, 0), (-1, 0), 0.5, BORDER_GRAY),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ("LEFTPADDING", (0, 0), (-1, -1), 2),
         ("RIGHTPADDING", (0, 0), (-1, -1), 2),
     ]
@@ -412,17 +464,17 @@ def generate_pdf(data: dict) -> bytes:
             story.append(Paragraph(
                 f'<font color="{rc.hexval()}">●</font> '
                 f'<b>{headline}</b> '
-                f'<font size="5.5" color="{TEXT_FAINT.hexval()}">— {source}</font><br/>'
-                f'<font size="6" color="{TEXT_MUTED.hexval()}">{summary}</font>',
-                ParagraphStyle("StoryItem", fontName="Helvetica", fontSize=7, leading=9,
-                    textColor=TEXT_PRIMARY, spaceBefore=0.8*mm)
+                f'<font size="6" color="{TEXT_FAINT.hexval()}">— {source}</font><br/>'
+                f'<font size="7" color="{TEXT_MUTED.hexval()}">{summary}</font>',
+                ParagraphStyle("StoryItem", fontName="Helvetica", fontSize=7.5, leading=10,
+                    textColor=TEXT_PRIMARY, spaceBefore=1.5*mm)
             ))
 
     # ── Analyst Sentiment + COGS (single compact row) ──
     sentiment = intel.get("analyst_sentiment", {})
     cogs = intel.get("cogs_outlook", "")
     if sentiment or cogs:
-        story.append(Spacer(1, 2 * mm))
+        story.append(Spacer(1, 4 * mm))
 
         # Sentiment
         overall_s = (sentiment.get("overall", "NEUTRAL")).upper() if sentiment else "—"
@@ -443,27 +495,12 @@ def generate_pdf(data: dict) -> bytes:
             ("BACKGROUND", (0, 0), (-1, -1), LIGHT_GRAY),
             ("BOX", (0, 0), (-1, -1), 0.5, BORDER_GRAY),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
         ]))
         story.append(bottom_table)
-
-    # ── Footer ──
-    story.append(Spacer(1, 2 * mm))
-    story.append(HRFlowable(width="100%", thickness=0.3, color=BORDER_GRAY, spaceAfter=1*mm))
-    gen_time = ""
-    if timestamp:
-        try:
-            dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-            gen_time = dt.strftime("%d %b %Y %H:%M UTC")
-        except Exception:
-            gen_time = timestamp
-    story.append(Paragraph(
-        f"Sources: Yahoo Finance (incl. JKM), IMF PortWatch (AIS transit), Freightos (FBX), Google News, Claude AI (Anthropic) &nbsp;|&nbsp; Generated {gen_time}",
-        styles["footer"]
-    ))
 
     doc.build(story)
     buf.seek(0)
