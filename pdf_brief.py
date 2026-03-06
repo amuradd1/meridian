@@ -36,44 +36,48 @@ BORDER_GRAY = HexColor("#e2e8f0")
 def get_styles():
     return {
         "title": ParagraphStyle(
-            "Title", fontName="Helvetica-Bold", fontSize=12, leading=15,
+            "Title", fontName="Helvetica-Bold", fontSize=14, leading=17,
             textColor=TEXT_PRIMARY, alignment=TA_LEFT, spaceAfter=1*mm,
         ),
         "section_header": ParagraphStyle(
-            "SectionHeader", fontName="Helvetica-Bold", fontSize=7.5, leading=10,
-            textColor=ACCENT, alignment=TA_LEFT, spaceBefore=3*mm, spaceAfter=1.5*mm,
+            "SectionHeader", fontName="Helvetica-Bold", fontSize=9, leading=12,
+            textColor=ACCENT, alignment=TA_LEFT, spaceBefore=4*mm, spaceAfter=2*mm,
+        ),
+        "disclaimer": ParagraphStyle(
+            "Disclaimer", fontName="Helvetica-Oblique", fontSize=6.5, leading=8.5,
+            textColor=TEXT_FAINT, alignment=TA_LEFT, spaceBefore=0, spaceAfter=2*mm,
         ),
         "body_muted": ParagraphStyle(
-            "BodyMuted", fontName="Helvetica", fontSize=6.5, leading=8.5,
+            "BodyMuted", fontName="Helvetica", fontSize=7.5, leading=10,
             textColor=TEXT_MUTED, alignment=TA_LEFT,
         ),
         "bullet": ParagraphStyle(
-            "Bullet", fontName="Helvetica", fontSize=7, leading=9.5,
-            textColor=TEXT_PRIMARY, alignment=TA_LEFT, leftIndent=4*mm,
-            bulletIndent=0, spaceBefore=0.8*mm, bulletFontName="Helvetica",
+            "Bullet", fontName="Helvetica", fontSize=8, leading=11,
+            textColor=TEXT_PRIMARY, alignment=TA_LEFT, leftIndent=5*mm,
+            bulletIndent=0, spaceBefore=1.2*mm, bulletFontName="Helvetica",
         ),
         "kpi_value": ParagraphStyle(
-            "KPIValue", fontName="Helvetica-Bold", fontSize=9, leading=11,
+            "KPIValue", fontName="Helvetica-Bold", fontSize=11, leading=14,
             textColor=TEXT_PRIMARY, alignment=TA_CENTER,
         ),
         "kpi_label": ParagraphStyle(
-            "KPILabel", fontName="Helvetica", fontSize=5, leading=7,
+            "KPILabel", fontName="Helvetica", fontSize=6, leading=8,
             textColor=TEXT_FAINT, alignment=TA_CENTER,
         ),
         "table_header": ParagraphStyle(
-            "TableHeader", fontName="Helvetica-Bold", fontSize=5.5, leading=7,
+            "TableHeader", fontName="Helvetica-Bold", fontSize=6.5, leading=8.5,
             textColor=TEXT_FAINT, alignment=TA_LEFT,
         ),
         "table_cell": ParagraphStyle(
-            "TableCell", fontName="Helvetica", fontSize=6.5, leading=8.5,
+            "TableCell", fontName="Helvetica", fontSize=7.5, leading=10,
             textColor=TEXT_PRIMARY, alignment=TA_LEFT,
         ),
         "table_cell_bold": ParagraphStyle(
-            "TableCellBold", fontName="Helvetica-Bold", fontSize=6.5, leading=8.5,
+            "TableCellBold", fontName="Helvetica-Bold", fontSize=7.5, leading=10,
             textColor=TEXT_PRIMARY, alignment=TA_LEFT,
         ),
         "footer": ParagraphStyle(
-            "Footer", fontName="Helvetica", fontSize=5.5, leading=7,
+            "Footer", fontName="Helvetica", fontSize=6, leading=8,
             textColor=TEXT_FAINT, alignment=TA_CENTER,
         ),
     }
@@ -132,10 +136,10 @@ def generate_pdf(data: dict) -> bytes:
     title_data = [[
         Paragraph("Daily Geopolitical & Energy Procurement Intelligence Brief", styles["title"]),
         Paragraph(
-            f'<font size="6" color="{TEXT_FAINT.hexval()}">{date_str}</font>'
+            f'<font size="7" color="{TEXT_FAINT.hexval()}">{date_str}</font>'
             f'&nbsp;&nbsp;'
-            f'<font size="7" color="{risk_label_color.hexval()}"><b>{overall_risk} RISK</b></font>',
-            ParagraphStyle("TitleRight", fontName="Helvetica", fontSize=7, alignment=TA_RIGHT, leading=10)
+            f'<font size="9" color="{risk_label_color.hexval()}"><b>{overall_risk} RISK</b></font>',
+            ParagraphStyle("TitleRight", fontName="Helvetica", fontSize=8, alignment=TA_RIGHT, leading=12)
         ),
     ]]
     title_table = Table(title_data, colWidths=[usable_w*0.65, usable_w*0.35])
@@ -144,12 +148,12 @@ def generate_pdf(data: dict) -> bytes:
         ("BOTTOMPADDING", (0,0), (-1,-1), 0),
     ]))
     story.append(title_table)
-    story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER_GRAY, spaceBefore=1*mm, spaceAfter=2*mm))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER_GRAY, spaceBefore=1*mm, spaceAfter=1.5*mm))
 
     # ── Disclaimer ──
     story.append(Paragraph(
-        '<font color="#718096"><b>Disclaimer:</b> Macro-level analysis only — does not reflect individual supplier agreements or contract terms. Contact your category team for supplier-specific guidance.</font>',
-        ParagraphStyle("Disclaimer", fontName="Helvetica", fontSize=5.5, leading=7.5, textColor=TEXT_FAINT, alignment=TA_LEFT, spaceBefore=0, spaceAfter=1.5*mm)
+        '<b>Disclaimer:</b> Macro-level analysis only — does not reflect individual supplier agreements or contract terms. Contact your category team for supplier-specific guidance.',
+        styles["disclaimer"]
     ))
 
     # ── KPI Strip ──
@@ -172,16 +176,16 @@ def generate_pdf(data: dict) -> bytes:
         kpi_row_labels.append(Paragraph(label.upper(), styles["kpi_label"]))
 
     col_w = usable_w / 6
-    kpi_table = Table([kpi_row_values, kpi_row_labels], colWidths=[col_w]*6, rowHeights=[13, 8])
+    kpi_table = Table([kpi_row_values, kpi_row_labels], colWidths=[col_w]*6, rowHeights=[16, 10])
     kpi_table.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,-1), LIGHT_GRAY),
         ("BOX", (0,0), (-1,-1), 0.5, BORDER_GRAY),
         ("INNERGRID", (0,0), (-1,-1), 0.5, BORDER_GRAY),
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("TOPPADDING", (0,0), (-1,0), 2),
+        ("TOPPADDING", (0,0), (-1,0), 3),
         ("BOTTOMPADDING", (0,0), (-1,0), 0),
         ("TOPPADDING", (0,1), (-1,1), 0),
-        ("BOTTOMPADDING", (0,1), (-1,1), 2),
+        ("BOTTOMPADDING", (0,1), (-1,1), 3),
     ]))
     story.append(kpi_table)
 
@@ -195,7 +199,7 @@ def generate_pdf(data: dict) -> bytes:
         story.append(Paragraph(exec_summary, styles["body_muted"]))
 
     # ── Two-column: Energy Markets | Chokepoints ──
-    story.append(Spacer(1, 1.5*mm))
+    story.append(Spacer(1, 2*mm))
 
     # Energy Markets table
     energy_header = [
@@ -214,20 +218,20 @@ def generate_pdf(data: dict) -> bytes:
         sign7 = "+" if c7 > 0 else ""
         energy_rows.append([
             Paragraph(f'<b>{c["name"]}</b>', styles["table_cell_bold"]),
-            Paragraph(f'{c["price"]:.2f} <font size="5" color="{TEXT_FAINT.hexval()}">{c["unit"]}</font>', styles["table_cell"]),
+            Paragraph(f'{c["price"]:.2f} <font size="5.5" color="{TEXT_FAINT.hexval()}">{c["unit"]}</font>', styles["table_cell"]),
             Paragraph(f'<font color="{col24.hexval()}">{sign24}{c24:.1f}%</font>', styles["table_cell"]),
             Paragraph(f'<font color="{col7.hexval()}">{sign7}{c7:.1f}%</font>', styles["table_cell"]),
         ])
 
-    energy_col_widths = [usable_w*0.20, usable_w*0.13, usable_w*0.08, usable_w*0.08]
+    energy_col_widths = [usable_w*0.20, usable_w*0.14, usable_w*0.08, usable_w*0.08]
     energy_table = Table(energy_rows, colWidths=energy_col_widths)
     energy_table.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), LIGHT_GRAY),
         ("LINEBELOW", (0,0), (-1,0), 0.5, BORDER_GRAY),
         ("LINEBELOW", (0,1), (-1,-1), 0.25, BORDER_GRAY),
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("TOPPADDING", (0,0), (-1,-1), 1.5),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 1.5),
+        ("TOPPADDING", (0,0), (-1,-1), 2),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 2),
         ("LEFTPADDING", (0,0), (-1,-1), 2),
         ("RIGHTPADDING", (0,0), (-1,-1), 2),
     ]))
@@ -249,15 +253,15 @@ def generate_pdf(data: dict) -> bytes:
             Paragraph(delay_str, styles["table_cell"]),
         ])
 
-    choke_col_widths = [usable_w*0.25, usable_w*0.12, usable_w*0.08]
+    choke_col_widths = [usable_w*0.26, usable_w*0.12, usable_w*0.08]
     choke_table = Table(choke_rows, colWidths=choke_col_widths)
     choke_table.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), LIGHT_GRAY),
         ("LINEBELOW", (0,0), (-1,0), 0.5, BORDER_GRAY),
         ("LINEBELOW", (0,1), (-1,-1), 0.25, BORDER_GRAY),
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("TOPPADDING", (0,0), (-1,-1), 1.5),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 1.5),
+        ("TOPPADDING", (0,0), (-1,-1), 2),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 2),
         ("LEFTPADDING", (0,0), (-1,-1), 2),
         ("RIGHTPADDING", (0,0), (-1,-1), 2),
     ]))
@@ -289,6 +293,7 @@ def generate_pdf(data: dict) -> bytes:
         Paragraph("<b>CATEGORY</b>", styles["table_header"]),
         Paragraph("<b>ENERGY</b>", styles["table_header"]),
         Paragraph("<b>RISK</b>", styles["table_header"]),
+        Paragraph("<b>DRIVER</b>", styles["table_header"]),
         Paragraph("<b>SUGGESTED MITIGATION</b>", styles["table_header"]),
     ]
     proc_rows = [proc_header]
@@ -296,26 +301,27 @@ def generate_pdf(data: dict) -> bytes:
         r = cat.get("risk", "M")
         rc = risk_color(r)
         ec = risk_color(cat.get("energy_sensitivity", "M"))
-        # Truncate mitigation to keep it compact
         mitigation = cat.get("suggested_mitigation", "—")
-        if len(mitigation) > 120:
-            mitigation = mitigation[:117] + "..."
+        if len(mitigation) > 140:
+            mitigation = mitigation[:137] + "..."
+        risk_driver = cat.get("risk_driver", "—")
         proc_rows.append([
             Paragraph(f'<b>{cat.get("name", "")}</b>', styles["table_cell_bold"]),
             Paragraph(f'<font color="{ec.hexval()}"><b>{cat.get("energy_sensitivity", "—")}</b></font>', styles["table_cell"]),
             Paragraph(f'<font color="{rc.hexval()}"><b>{r}</b></font>', styles["table_cell"]),
+            Paragraph(f'<i>{risk_driver}</i>', ParagraphStyle("DriverCell", fontName="Helvetica-Oblique", fontSize=6.5, leading=8.5, textColor=TEXT_MUTED)),
             Paragraph(mitigation, styles["body_muted"]),
         ])
 
-    proc_col_widths = [usable_w*0.20, usable_w*0.06, usable_w*0.05, usable_w*0.69]
+    proc_col_widths = [usable_w*0.18, usable_w*0.06, usable_w*0.05, usable_w*0.16, usable_w*0.55]
     proc_table = Table(proc_rows, colWidths=proc_col_widths)
 
     proc_style_cmds = [
         ("BACKGROUND", (0,0), (-1,0), LIGHT_GRAY),
         ("LINEBELOW", (0,0), (-1,0), 0.5, BORDER_GRAY),
         ("VALIGN", (0,0), (-1,-1), "TOP"),
-        ("TOPPADDING", (0,0), (-1,-1), 1.5),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 1.5),
+        ("TOPPADDING", (0,0), (-1,-1), 2),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 2),
         ("LEFTPADDING", (0,0), (-1,-1), 2),
         ("RIGHTPADDING", (0,0), (-1,-1), 2),
     ]
@@ -331,7 +337,7 @@ def generate_pdf(data: dict) -> bytes:
     # ── Analyst Sentiment (compact) ──
     sentiment = intel.get("analyst_sentiment", {})
     if sentiment:
-        story.append(Spacer(1, 1.5*mm))
+        story.append(Spacer(1, 2.5*mm))
         overall_s = (sentiment.get("overall", "NEUTRAL")).upper()
         sc = risk_color({"BEARISH": "H", "BULLISH": "L"}.get(overall_s, "M"))
         sentiment_text = f'<font color="{sc.hexval()}"><b>{overall_s}</b></font>'
@@ -344,7 +350,7 @@ def generate_pdf(data: dict) -> bytes:
 
         sent_data = [[
             Paragraph(f"<b>ANALYST SENTIMENT</b> &nbsp; {sentiment_text}",
-                ParagraphStyle("SentLabel", fontName="Helvetica-Bold", fontSize=6.5, leading=8.5, textColor=ACCENT)),
+                ParagraphStyle("SentLabel", fontName="Helvetica-Bold", fontSize=7.5, leading=10, textColor=ACCENT)),
             Paragraph(outlook_text, styles["body_muted"]),
         ]]
         sent_table = Table(sent_data, colWidths=[usable_w*0.22, usable_w*0.78])
@@ -352,20 +358,20 @@ def generate_pdf(data: dict) -> bytes:
             ("BACKGROUND", (0,0), (-1,-1), LIGHT_GRAY),
             ("BOX", (0,0), (-1,-1), 0.5, BORDER_GRAY),
             ("VALIGN", (0,0), (-1,-1), "TOP"),
-            ("TOPPADDING", (0,0), (-1,-1), 3),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 3),
-            ("LEFTPADDING", (0,0), (-1,-1), 4),
-            ("RIGHTPADDING", (0,0), (-1,-1), 4),
+            ("TOPPADDING", (0,0), (-1,-1), 4),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+            ("LEFTPADDING", (0,0), (-1,-1), 5),
+            ("RIGHTPADDING", (0,0), (-1,-1), 5),
         ]))
         story.append(sent_table)
 
     # ── COGS Outlook ──
     cogs = intel.get("cogs_outlook", "")
     if cogs:
-        story.append(Spacer(1, 1.5*mm))
+        story.append(Spacer(1, 2*mm))
         cogs_data = [[
             Paragraph("<b>COGS OUTLOOK</b>", ParagraphStyle(
-                "COGSLabel", fontName="Helvetica-Bold", fontSize=6.5, leading=8.5, textColor=ACCENT)),
+                "COGSLabel", fontName="Helvetica-Bold", fontSize=7.5, leading=10, textColor=ACCENT)),
             Paragraph(cogs, styles["body_muted"]),
         ]]
         cogs_table = Table(cogs_data, colWidths=[usable_w*0.15, usable_w*0.85])
@@ -373,16 +379,16 @@ def generate_pdf(data: dict) -> bytes:
             ("BACKGROUND", (0,0), (-1,-1), LIGHT_GRAY),
             ("BOX", (0,0), (-1,-1), 0.5, BORDER_GRAY),
             ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-            ("TOPPADDING", (0,0), (-1,-1), 3),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 3),
-            ("LEFTPADDING", (0,0), (-1,-1), 4),
-            ("RIGHTPADDING", (0,0), (-1,-1), 4),
+            ("TOPPADDING", (0,0), (-1,-1), 4),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+            ("LEFTPADDING", (0,0), (-1,-1), 5),
+            ("RIGHTPADDING", (0,0), (-1,-1), 5),
         ]))
         story.append(cogs_table)
 
     # ── Footer ──
-    story.append(Spacer(1, 2*mm))
-    story.append(HRFlowable(width="100%", thickness=0.3, color=BORDER_GRAY, spaceAfter=1*mm))
+    story.append(Spacer(1, 3*mm))
+    story.append(HRFlowable(width="100%", thickness=0.3, color=BORDER_GRAY, spaceAfter=1.5*mm))
     gen_time = ""
     if timestamp:
         try:
