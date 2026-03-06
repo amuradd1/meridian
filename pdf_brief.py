@@ -301,13 +301,17 @@ def generate_pdf(data: dict) -> bytes:
         r = cat.get("risk", "M")
         rc = risk_color(r)
         ec = risk_color(cat.get("energy_sensitivity", "M"))
+        sens_label = cat.get("energy_sensitivity", "—")
+        sens_rationale = cat.get("energy_sensitivity_rationale", "")
+        if sens_rationale:
+            sens_label += " *"  # asterisk indicates dynamic override
         mitigation = cat.get("suggested_mitigation", "—")
         if len(mitigation) > 140:
             mitigation = mitigation[:137] + "..."
         risk_driver = cat.get("risk_driver", "—")
         proc_rows.append([
             Paragraph(f'<b>{cat.get("name", "")}</b>', styles["table_cell_bold"]),
-            Paragraph(f'<font color="{ec.hexval()}"><b>{cat.get("energy_sensitivity", "—")}</b></font>', styles["table_cell"]),
+            Paragraph(f'<font color="{ec.hexval()}"><b>{sens_label}</b></font>', styles["table_cell"]),
             Paragraph(f'<font color="{rc.hexval()}"><b>{r}</b></font>', styles["table_cell"]),
             Paragraph(f'<i>{risk_driver}</i>', ParagraphStyle("DriverCell", fontName="Helvetica-Oblique", fontSize=6.5, leading=8.5, textColor=TEXT_MUTED)),
             Paragraph(mitigation, styles["body_muted"]),
@@ -397,7 +401,7 @@ def generate_pdf(data: dict) -> bytes:
         except Exception:
             gen_time = timestamp
     story.append(Paragraph(
-        f"Sources: Yahoo Finance, Investing.com (JKM), Google News, Claude AI (Anthropic), Natural Earth &nbsp;|&nbsp; Generated {gen_time}",
+        f"Sources: Yahoo Finance, Investing.com (JKM), IMF PortWatch (AIS transit), Google News, Claude AI (Anthropic), Natural Earth &nbsp;|&nbsp; Generated {gen_time}",
         styles["footer"]
     ))
 

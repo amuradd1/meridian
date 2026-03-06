@@ -292,14 +292,45 @@ function renderChokepoints(chokepoints) {
   chokepoints.forEach(function(cp) {
     var statusLower = (cp.status || 'open').toLowerCase();
     var statusClass = 'status-' + statusLower;
+    var hasTransit = cp.transit_latest != null;
+    var pctChange = cp.transit_pct_change || 0;
+    var pctClass = pctChange <= -25 ? 'change-negative' : (pctChange <= -15 ? 'change-positive' : 'change-flat');
+    var pctSign = pctChange > 0 ? '+' : '';
+
     html += '<div class="chokepoint-item">' +
       '<div class="chokepoint-header">' +
         '<span class="chokepoint-name">' + cp.name + '</span>' +
         '<span class="status-badge ' + statusClass + '">' + (cp.status || 'OPEN') + '</span>' +
       '</div>' +
       '<div class="chokepoint-detail">' + (cp.detail || 'No current alerts.') + '</div>' +
-      (cp.delay_hours > 0 ? '<div class="chokepoint-delay">Est. delay: +' + cp.delay_hours + 'h</div>' : '') +
-    '</div>';
+      (cp.delay_hours > 0 ? '<div class="chokepoint-delay">Est. delay: +' + cp.delay_hours + 'h</div>' : '');
+
+    // PortWatch transit KPIs
+    if (hasTransit) {
+      html += '<div class="chokepoint-transit">' +
+        '<div class="transit-kpis">' +
+          '<div class="transit-kpi">' +
+            '<span class="transit-kpi-value">' + cp.transit_latest + '</span>' +
+            '<span class="transit-kpi-label">Transits</span>' +
+          '</div>' +
+          '<div class="transit-kpi">' +
+            '<span class="transit-kpi-value ' + pctClass + '">' + pctSign + pctChange.toFixed(1) + '%</span>' +
+            '<span class="transit-kpi-label">vs 30d Avg</span>' +
+          '</div>' +
+          '<div class="transit-kpi">' +
+            '<span class="transit-kpi-value">' + (cp.transit_containers || 0) + '</span>' +
+            '<span class="transit-kpi-label">Containers</span>' +
+          '</div>' +
+          '<div class="transit-kpi">' +
+            '<span class="transit-kpi-value">' + (cp.transit_tankers || 0) + '</span>' +
+            '<span class="transit-kpi-label">Tankers</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="transit-source">IMF PortWatch · ' + (cp.transit_date || '') + '</div>' +
+      '</div>';
+    }
+
+    html += '</div>';
   });
   container.innerHTML = html;
 }
@@ -316,9 +347,14 @@ function renderProcurement(categories) {
     var riskCls = riskClass(cat.risk);
     var sensCls = riskClass(cat.energy_sensitivity);
     var riskDriver = cat.risk_driver || '';
+    var sensRationale = cat.energy_sensitivity_rationale || '';
+    // If energy sensitivity was changed from default, show tooltip with rationale
+    var sensHtml = sensRationale
+      ? '<span class="tooltip-trigger"><span class="risk-badge ' + sensCls + '" style="font-size:0.5625rem;padding:1px 6px">' + (cat.energy_sensitivity || '—') + ' ⚡</span><span class="tooltip-content">' + sensRationale + '</span></span>'
+      : '<span class="risk-badge ' + sensCls + '" style="font-size:0.5625rem;padding:1px 6px">' + (cat.energy_sensitivity || '—') + '</span>';
     html += '<tr class="procurement-row-' + riskCls + '">' +
       '<td><span class="procurement-category">' + cat.name + '</span></td>' +
-      '<td><span class="risk-badge ' + sensCls + '" style="font-size:0.5625rem;padding:1px 6px">' + (cat.energy_sensitivity || '—') + '</span></td>' +
+      '<td>' + sensHtml + '</td>' +
       '<td style="max-width:200px"><span style="font-size:var(--text-xs);color:var(--color-text-muted)">' + (cat.supply_route_exposure || '—') + '</span></td>' +
       '<td>' +
         '<div class="risk-cell">' +
@@ -398,6 +434,7 @@ function renderSources(timestamp) {
     '<div class="source-item"><span class="source-item-label">Commodity Prices:</span> <a href="https://finance.yahoo.com" target="_blank" rel="noopener noreferrer">Yahoo Finance</a> (delayed)</div>' +
     '<div class="source-item"><span class="source-item-label">News Headlines:</span> <a href="https://news.google.com" target="_blank" rel="noopener noreferrer">Google News RSS</a></div>' +
     '<div class="source-item"><span class="source-item-label">LNG JKM:</span> <a href="https://uk.investing.com/commodities/lng-japan-korea-marker-platts-futures-historical-data" target="_blank" rel="noopener noreferrer">Investing.com (Platts JKM Futures)</a></div>' +
+    '<div class="source-item"><span class="source-item-label">Chokepoint Transit:</span> <a href="https://portwatch.imf.org" target="_blank" rel="noopener noreferrer">IMF PortWatch</a> (AIS vessel transit data)</div>' +
     '<div class="source-item"><span class="source-item-label">Freight Rates:</span> LLM-estimated based on market data and news context (indicative only)</div>' +
     '<div class="source-item"><span class="source-item-label">Intelligence Analysis:</span> <a href="https://www.anthropic.com" target="_blank" rel="noopener noreferrer">Claude AI (Anthropic)</a></div>' +
     '<div class="source-item"><span class="source-item-label">Map Data:</span> <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener noreferrer">Natural Earth</a> via world-atlas</div>' +

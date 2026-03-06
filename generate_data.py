@@ -16,15 +16,36 @@ from anthropic import Anthropic
 
 YAHOO_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
+# ── Canonical procurement categories (pinned names, default energy sensitivity) ──
+# Category names are HARDCODED and never change.
+# Energy sensitivity defaults are baselines — the LLM may override them day-to-day
+# but must provide an explicit rationale for any deviation.
+CANONICAL_CATEGORIES = [
+    {"name": "Cellulose Acetate Filter Tow", "default_energy_sensitivity": "H"},
+    {"name": "Cigarette Paper", "default_energy_sensitivity": "M"},
+    {"name": "Cigarette Packaging (Board & Print)", "default_energy_sensitivity": "H"},
+    {"name": "Pouch Packaging (Resins)", "default_energy_sensitivity": "H"},
+    {"name": "Flavors & Ingredients", "default_energy_sensitivity": "L"},
+    {"name": "Heated Tobacco Devices & Consumables", "default_energy_sensitivity": "M"},
+    {"name": "E-Cigarettes & Vape Devices", "default_energy_sensitivity": "M"},
+    {"name": "Nicotine Pouches", "default_energy_sensitivity": "L"},
+]
+
+# ── IMF PortWatch chokepoint mapping ──
+PORTWATCH_CHOKEPOINTS = {
+    "chokepoint6": {"name": "Strait of Hormuz", "display": "Strait of Hormuz"},
+    "chokepoint4": {"name": "Bab el-Mandeb Strait", "display": "Bab el-Mandeb / Red Sea"},
+    "chokepoint1": {"name": "Suez Canal", "display": "Suez Canal"},
+    "chokepoint5": {"name": "Malacca Strait", "display": "Malacca Strait"},
+}
+
 
 async def fetch_yahoo(http, symbol, name, unit):
     try:
-        # Fetch 5d data for accurate 24h change
         r5 = await http.get(
             f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=5d&interval=1d",
             headers=YAHOO_HEADERS
         )
-        # Fetch 1mo data for 7d change and sparkline history
         r1m = await http.get(
             f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=1mo&interval=1d",
             headers=YAHOO_HEADERS
@@ -34,10 +55,8 @@ async def fetch_yahoo(http, symbol, name, unit):
 
         data5 = r5.json()
         data1m = r1m.json()
-
         result5 = data5["chart"]["result"][0]
         result1m = data1m["chart"]["result"][0]
-
         meta5 = result5["meta"]
         closes5 = [c for c in result5["indicators"]["quote"][0].get("close", []) if c is not None]
         closes1m = [c for c in result1m["indicators"]["quote"][0].get("close", []) if c is not None]
@@ -46,12 +65,8 @@ async def fetch_yahoo(http, symbol, name, unit):
             return None
 
         current = float(meta5.get("regularMarketPrice", closes5[-1]))
-
-        # 24h change: use yesterday's close from 5d data (closes5[-2])
         prev_24h = closes5[-2] if len(closes5) > 1 else current
         change_24h = round(((current - prev_24h) / prev_24h) * 100, 2)
-
-        # 7d change: use closes1m[-6] vs current
         week_ago = closes1m[-6] if len(closes1m) > 5 else closes1m[0]
         change_7d = round(((current - float(week_ago)) / float(week_ago)) * 100, 2)
 
@@ -88,30 +103,22 @@ async def fetch_jkm_investing(http):
             return None
 
         current = float(m_last.group(1))
-
-        # Extract change %
         m_pct = re.search(r'data-test="instrument-price-change-percent">\(?([+-]?[0-9.]+)', text)
         change_pct = float(m_pct.group(1)) if m_pct else 0.0
 
-        # Fetch historical data page for sparkline history
         r2 = await http.get(
             "https://uk.investing.com/commodities/lng-japan-korea-marker-platts-futures-historical-data",
             headers=headers,
         )
         history = []
         if r2.status_code == 200:
-            # Extract close prices from historical table (range 5-80 for JKM)
             all_prices = re.findall(r'>([0-9]{1,2}\.[0-9]{2,3})<', r2.text)
-            # Filter to plausible JKM range and deduplicate consecutive entries
             plausible = [float(p) for p in all_prices if 5.0 <= float(p) <= 80.0]
-            # Take every 4th value (close, open, high, low pattern) — close is first
             if len(plausible) >= 8:
-                closes = plausible[::4][:20]  # max ~20 days
-                history = list(reversed(closes))  # oldest to newest
+                closes = plausible[::4][:20]
+                history = list(reversed(closes))
 
-        # Compute 24h change from first two history entries or use page change
         change_24h = change_pct
-        # Compute 7d change from history
         change_7d = 0.0
         if len(history) >= 6:
             week_ago = history[-6]
@@ -149,13 +156,11 @@ async def fetch_commodities():
         jkm_task = fetch_jkm_investing(http)
         results = await asyncio.gather(*yahoo_tasks, jkm_task)
 
-    # Yahoo results + JKM
     commodities = [r for r in results[:-1] if r]
     jkm = results[-1]
     if jkm:
         commodities.append(jkm)
     else:
-        # Fallback: estimate from TTF if investing.com fails
         print("  JKM: falling back to TTF estimate")
         ttf = next((c for c in commodities if "TTF" in c["name"]), None)
         if ttf:
@@ -166,6 +171,116 @@ async def fetch_commodities():
             jkm_fb["history"] = [round(p * 1.15, 2) for p in ttf["history"]]
             commodities.append(jkm_fb)
     return commodities
+
+
+async def fetch_chokepoint_transit():
+    """Fetch daily vessel transit data from IMF PortWatch for our 4 chokepoints.
+    Returns dict keyed by display name with transit stats and computed status."""
+    port_ids = list(PORTWATCH_CHOKEPOINTS.keys())
+    where_clause = "portid IN ('" + "','".join(port_ids) + "')"
+    url = (
+        "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/"
+        "Daily_Chokepoints_Data/FeatureServer/0/query"
+    )
+    params = {
+        "where": where_clause,
+        "outFields": "date,portid,portname,n_total,n_container,n_tanker,n_dry_bulk,capacity",
+        "orderByFields": "date DESC",
+        "resultRecordCount": 280,  # ~70 days × 4 chokepoints
+        "f": "json",
+    }
+
+    result = {}
+    try:
+        async with httpx.AsyncClient(timeout=30) as http:
+            r = await http.get(url, params=params)
+            if r.status_code != 200:
+                print(f"  PortWatch API error: HTTP {r.status_code}")
+                return {}
+            data = r.json()
+            if "error" in data:
+                print(f"  PortWatch API error: {data['error']}")
+                return {}
+
+        features = data.get("features", [])
+        print(f"  PortWatch: {len(features)} records fetched")
+
+        # Group by portid
+        from collections import defaultdict
+        by_port = defaultdict(list)
+        for f in features:
+            a = f["attributes"]
+            by_port[a["portid"]].append(a)
+
+        for port_id, records in by_port.items():
+            if port_id not in PORTWATCH_CHOKEPOINTS:
+                continue
+            cp_info = PORTWATCH_CHOKEPOINTS[port_id]
+            display = cp_info["display"]
+
+            # Sort by date ascending
+            records.sort(key=lambda x: x["date"])
+            totals = [r["n_total"] for r in records]
+
+            if len(totals) < 7:
+                continue
+
+            latest = totals[-1]
+            latest_date = datetime.fromtimestamp(records[-1]["date"] / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+
+            # 30-day baseline (excluding latest day)
+            baseline_window = totals[-31:-1] if len(totals) > 31 else totals[:-1]
+            baseline_avg = sum(baseline_window) / len(baseline_window) if baseline_window else latest
+
+            # 7-day average (last 7 days including latest)
+            avg_7d = sum(totals[-7:]) / min(len(totals), 7)
+
+            # % change from baseline
+            pct_change = ((latest - baseline_avg) / baseline_avg * 100) if baseline_avg > 0 else 0
+
+            # 7d % change from baseline
+            pct_change_7d = ((avg_7d - baseline_avg) / baseline_avg * 100) if baseline_avg > 0 else 0
+
+            # Derive status from transit volume drop
+            # Use 7d average to smooth out daily noise
+            if pct_change_7d <= -50:
+                status = "CLOSED"
+                delay_hours = 168  # ~7 days rerouting
+            elif pct_change_7d <= -25:
+                status = "RESTRICTED"
+                delay_hours = max(24, int(abs(pct_change_7d) * 1.5))
+            elif pct_change_7d <= -15:
+                status = "RESTRICTED"
+                delay_hours = max(6, int(abs(pct_change_7d) * 0.8))
+            else:
+                status = "OPEN"
+                delay_hours = 0
+
+            # Container-specific stats
+            containers = [r.get("n_container", 0) for r in records]
+            latest_containers = containers[-1] if containers else 0
+            tankers = [r.get("n_tanker", 0) for r in records]
+            latest_tankers = tankers[-1] if tankers else 0
+
+            result[display] = {
+                "status": status,
+                "delay_hours": delay_hours,
+                "latest_date": latest_date,
+                "latest_transits": latest,
+                "baseline_avg_30d": round(baseline_avg, 0),
+                "avg_7d": round(avg_7d, 0),
+                "pct_change_vs_baseline": round(pct_change, 1),
+                "pct_change_7d_vs_baseline": round(pct_change_7d, 1),
+                "latest_containers": latest_containers,
+                "latest_tankers": latest_tankers,
+                "history_7d": totals[-7:],
+            }
+            print(f"    {display}: {latest} transits (30d avg: {baseline_avg:.0f}, 7d avg: {avg_7d:.0f}, 7d Δ: {pct_change_7d:+.1f}%) → {status}")
+
+    except Exception as e:
+        print(f"  PortWatch fetch error: {e}")
+
+    return result
 
 
 async def fetch_news():
@@ -185,8 +300,6 @@ async def fetch_news():
                     root = ET.fromstring(r.text)
                     for item in root.findall(".//item")[:4]:
                         raw_url = item.findtext("link", "")
-                        # Convert Google News RSS URL to browser-clickable URL
-                        # /rss/articles/ → /articles/ (JS redirect works in browser)
                         clean_url = raw_url.replace("/rss/articles/", "/articles/") if raw_url else ""
                         articles.append({
                             "title": item.findtext("title", ""),
@@ -200,17 +313,143 @@ async def fetch_news():
     return [a for a in articles if a["title"][:50] not in seen and not seen.add(a["title"][:50])][:15]
 
 
-def call_llm(commodities, news):
+def load_previous_data():
+    """Load previous data.json for persistence/comparison."""
+    data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
+    try:
+        with open(data_path) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
+def stabilise_risk_ratings(new_categories, prev_data):
+    """Prevent risk flip-flops: a category can escalate freely but needs
+    2 consecutive lower readings to de-escalate. Also enforces canonical
+    category names and pinned energy_sensitivity."""
+
+    RISK_ORDER = {"L": 0, "M": 1, "H": 2}
+
+    # Build lookup from previous run
+    prev_cats = {}
+    if prev_data:
+        prev_intel = prev_data.get("intelligence", {})
+        for c in prev_intel.get("procurement_categories", []):
+            prev_cats[c["name"]] = c
+
+    stabilised = []
+    for canonical in CANONICAL_CATEGORIES:
+        cname = canonical["name"]
+
+        # Find matching LLM output (fuzzy: check if canonical name is substring or vice versa)
+        matched = None
+        for nc in new_categories:
+            llm_name = nc.get("name", "")
+            if (cname.lower() in llm_name.lower()
+                    or llm_name.lower() in cname.lower()
+                    or cname.split("(")[0].strip().lower() in llm_name.lower()):
+                matched = nc
+                break
+
+        if not matched:
+            # No LLM match — carry forward from previous if available, else default
+            if cname in prev_cats:
+                prev = dict(prev_cats[cname])
+                prev["name"] = cname
+                prev["energy_sensitivity"] = canonical["default_energy_sensitivity"]
+                prev["energy_sensitivity_rationale"] = prev.get("energy_sensitivity_rationale", "")
+                stabilised.append(prev)
+            else:
+                stabilised.append({
+                    "name": cname,
+                    "energy_sensitivity": canonical["default_energy_sensitivity"],
+                    "energy_sensitivity_rationale": "",
+                    "supply_route_exposure": "Assessment pending",
+                    "risk": "M",
+                    "risk_driver": "Awaiting data",
+                    "rationale": "Insufficient data for assessment.",
+                    "suggested_mitigation": "Monitor and reassess on next cycle.",
+                })
+            continue
+
+        # Override name with canonical value (names are hardcoded)
+        matched["name"] = cname
+
+        # Energy sensitivity: allow LLM override only if justified
+        llm_sens = (matched.get("energy_sensitivity", "")).upper()[:1]
+        default_sens = canonical["default_energy_sensitivity"]
+        rationale = (matched.get("energy_sensitivity_rationale") or "").strip()
+
+        if llm_sens in ("H", "M", "L") and llm_sens != default_sens and rationale:
+            # LLM provided a different rating WITH justification — accept it
+            matched["energy_sensitivity"] = llm_sens
+            matched["energy_sensitivity_rationale"] = rationale
+        else:
+            # Use default — either LLM agreed, or didn't justify deviation
+            matched["energy_sensitivity"] = default_sens
+            matched["energy_sensitivity_rationale"] = ""
+
+        # Stabilise risk: prevent de-escalation without consecutive signals
+        new_risk = (matched.get("risk", "M")).upper()[:1]
+        if cname in prev_cats:
+            prev_risk = (prev_cats[cname].get("risk", "M")).upper()[:1]
+            prev_consecutive_lower = prev_cats[cname].get("_consecutive_lower", 0)
+
+            new_order = RISK_ORDER.get(new_risk, 1)
+            prev_order = RISK_ORDER.get(prev_risk, 1)
+
+            if new_order < prev_order:
+                # Trying to de-escalate
+                if prev_consecutive_lower >= 1:
+                    # 2nd consecutive lower reading — allow de-escalation
+                    matched["risk"] = new_risk
+                    matched["_consecutive_lower"] = 0
+                else:
+                    # 1st lower reading — hold at previous level
+                    matched["risk"] = prev_risk
+                    matched["_consecutive_lower"] = prev_consecutive_lower + 1
+            else:
+                # Same or escalating — reset counter
+                matched["risk"] = new_risk
+                matched["_consecutive_lower"] = 0
+        else:
+            matched["_consecutive_lower"] = 0
+
+        stabilised.append(matched)
+
+    return stabilised
+
+
+def call_llm(commodities, news, chokepoint_data):
     client = Anthropic(timeout=300.0)
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     trimmed_c = [{"name": c["name"], "price": c["price"], "unit": c["unit"], "change_24h": c["change_24h"], "change_7d": c["change_7d"]} for c in commodities]
-    # Build news items with index for URL mapping (LLM must NOT generate URLs)
+
     news_for_prompt = []
     for i, n in enumerate(news[:8]):
         news_for_prompt.append({"idx": i, "title": n["title"], "source": n["source"]})
-    # Keep a URL lookup for post-processing
     news_url_lookup = {i: n.get("url", "") for i, n in enumerate(news[:8])}
 
+    # Build chokepoint context from real PortWatch data
+    chokepoint_context = "CHOKEPOINT VESSEL TRANSIT DATA (IMF PortWatch — real AIS data):\n"
+    for display_name, cp_data in chokepoint_data.items():
+        chokepoint_context += (
+            f"  {display_name}: {cp_data['latest_transits']} transits on {cp_data['latest_date']} "
+            f"(30d baseline avg: {cp_data['baseline_avg_30d']:.0f}, 7d avg: {cp_data['avg_7d']:.0f}, "
+            f"7d change vs baseline: {cp_data['pct_change_7d_vs_baseline']:+.1f}%) → "
+            f"Derived status: {cp_data['status']}\n"
+        )
+    if not chokepoint_data:
+        chokepoint_context += "  (Data unavailable — estimate from news context)\n"
+
+    # Build canonical category list for prompt
+    cat_list = "\n".join([f'    {{\"name\": \"{c["name"]}\", \"energy_sensitivity\": \"H/M/L (default: {c["default_energy_sensitivity"]})\", '
+                          f'"energy_sensitivity_rationale": \"required if deviating from default — explain why, or empty string if unchanged\", '
+                          f'"supply_route_exposure": \"1 sentence\", \"risk\": \"H/M/L\", '
+                          f'"risk_driver": \"3-5 word primary risk driver\", '
+                          f'"rationale": \"MAX 1 sentence\", '
+                          f'"suggested_mitigation": \"1-2 sentences with specific strategic detail\"}},'
+                          for c in CANONICAL_CATEGORIES])
     prompt = f"""You are a senior geopolitical and energy risk analyst producing a daily intelligence 
 brief for the Chief Procurement Officer (CPO) of a global tobacco company (cigarettes, heated 
 tobacco, e-cigarettes/vapes, nicotine pouches, cigars). Today's date is {today}.
@@ -225,6 +464,8 @@ Category teams handle operational actions. The CPO needs situational awareness o
 
 COMMODITY PRICES (live):
 {json.dumps(trimmed_c, indent=2)}
+
+{chokepoint_context}
 
 NEWS HEADLINES (last 24-48 hours — reference by idx number):
 {json.dumps(news_for_prompt, indent=2)}
@@ -256,14 +497,7 @@ Produce ONLY valid JSON (no markdown fences):
     {{"route": "Jebel Ali → Rotterdam", "rate_20ft": "$XXXX", "change_7d": "+X%", "conflict_impact": "1 short sentence"}}
   ],
   "procurement_categories": [
-    {{"name": "Cellulose Acetate Filter Tow", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "risk_driver": "3-5 word primary risk driver e.g. 'Energy feedstock costs' or 'Single-source China assembly'", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
-    {{"name": "Cigarette Paper", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "risk_driver": "3-5 words", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
-    {{"name": "Cigarette Packaging (Board & Print)", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "risk_driver": "3-5 words", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
-    {{"name": "Pouch Packaging (Resins)", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "risk_driver": "3-5 words", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
-    {{"name": "Flavors & Ingredients", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "risk_driver": "3-5 words", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
-    {{"name": "Heated Tobacco Devices & Consumables", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "risk_driver": "3-5 words", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
-    {{"name": "E-Cigarettes & Vape Devices", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "risk_driver": "3-5 words", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
-    {{"name": "Nicotine Pouches", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "risk_driver": "3-5 words", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}}
+{cat_list}
   ],
   "chokepoint_status": [
     {{"name": "Strait of Hormuz", "status": "OPEN/RESTRICTED/CLOSED", "delay_hours": 0, "detail": "MAX 10 words"}},
@@ -295,12 +529,15 @@ RULES:
 - Use EXACT prices from data. Informational tone only — NO directives, NO 'should', NO 'recommend', NO 'action required'.
 - State facts, risks, and outlook.
 - The 'suggested_mitigation' field must describe GENERAL strategic approaches (e.g. 'supply base diversification', 'forward cover extension') — NEVER name specific countries, suppliers, or sourcing locations.
+- PROCUREMENT CATEGORIES: You MUST use the EXACT 8 category names provided above. Do NOT rename, merge, or omit any.
+- ENERGY SENSITIVITY: Each category has a default baseline (shown in parentheses in the template). You MAY change the energy_sensitivity rating from its default IF AND ONLY IF today's specific market data justifies it (e.g. a major LNG price spike temporarily elevating resin-dependent categories). If you deviate, you MUST populate 'energy_sensitivity_rationale' with a concise explanation referencing specific data (e.g. 'Elevated from M to H: 15% LNG surge increases resin feedstock costs'). If keeping the default, set energy_sensitivity_rationale to an empty string "".
 - 3 top stories. Each top_story MUST include a 'news_idx' field matching one of the idx values from NEWS HEADLINES. Do NOT generate URLs — URLs are injected automatically from the news_idx mapping.
 - 5 timeline events. All events must be from TODAY or EARLIER — never include future-dated events or forecasts. Only confirmed, already-occurred events.
 - Each executive_summary bullet must be MAX 1 sentence, sharp and data-driven. Do NOT prefix bullets with numbers or labels.
 - Container freight rates: estimate realistic current market rates based on commodity/shipping data and news context. Use USD values.
 - KPI summary: derive from all the data. categories_at_high_risk = count of procurement categories with risk H.
-- The 'suggested_mitigation' field must contain 1-2 sentences with specific strategic approaches. Include detail on HOW to mitigate (e.g. 'Extend forward coverage on energy-linked raw materials to lock in current pricing through Q3, and diversify converting suppliers across regions to reduce single-source exposure'). NEVER name specific countries or suppliers.
+- The 'suggested_mitigation' field must contain 1-2 sentences with specific strategic approaches. Include detail on HOW to mitigate. NEVER name specific countries or suppliers.
+- CHOKEPOINT STATUS: Use the real vessel transit data provided above to inform your chokepoint assessments. The status, delay_hours, and detail should be CONSISTENT with the observed traffic drops. Do not contradict the PortWatch data.
 - Heatmap detail: MAX 8 words per region.
 - Chokepoint detail: MAX 10 words each.
 - Procurement rationale: MAX 1 sentence. suggested_mitigation: 1-2 sentences with specific strategic detail.
@@ -326,15 +563,13 @@ WRITING QUALITY:
     if text.startswith("```"):
         text = "\n".join(text.split("\n")[1:])
         if text.endswith("```"): text = text[:-3].strip()
-    # Try parsing, with fallback for truncated JSON
+
     try:
         result = json.loads(text)
     except json.JSONDecodeError as orig_err:
         print(f"  JSON parse error: {orig_err}")
         print(f"  Text length: {len(text)}, last 100 chars: {text[-100:]}")
-        # Try to find the last complete top-level JSON object
         brace_depth = 0
-        bracket_depth = 0
         in_string = False
         i = 0
         last_valid_end = 0
@@ -355,10 +590,6 @@ WRITING QUALITY:
                     brace_depth -= 1
                     if brace_depth == 0:
                         last_valid_end = i + 1
-                elif ch == '[':
-                    bracket_depth += 1
-                elif ch == ']':
-                    bracket_depth -= 1
             i += 1
         if last_valid_end > 0:
             print(f"  Recovered JSON at position {last_valid_end}")
@@ -366,37 +597,54 @@ WRITING QUALITY:
         else:
             raise orig_err
 
-    # Post-process: inject real URLs into top_stories from news_url_lookup
+    # ── Post-process: inject real URLs into top_stories ──
     for story in result.get("top_stories", []):
         idx = story.pop("news_idx", None)
         if idx is not None and idx in news_url_lookup:
             story["url"] = news_url_lookup[idx]
         elif not story.get("url") or "google.com" not in story.get("url", ""):
-            # Fallback: search Google for the headline
             headline = story.get("headline", "")
             source = story.get("source", "")
             story["url"] = f"https://www.google.com/search?q={headline}+{source}".replace(" ", "+")
 
-    # Validate all story URLs are non-empty
     for story in result.get("top_stories", []):
         if not story.get("url"):
             story["url"] = "#"
 
-    # ── POST-PROCESS: Override LLM KPIs with COMPUTED values ──
-    # The LLM often miscounts. Compute from actual returned data.
+    # ── Post-process: Override chokepoint status with PortWatch data ──
+    if chokepoint_data:
+        for cp in result.get("chokepoint_status", []):
+            cp_name = cp.get("name", "")
+            if cp_name in chokepoint_data:
+                pw = chokepoint_data[cp_name]
+                cp["status"] = pw["status"]
+                cp["delay_hours"] = pw["delay_hours"]
+                # Inject PortWatch KPIs for frontend display
+                cp["transit_latest"] = pw["latest_transits"]
+                cp["transit_baseline"] = pw["baseline_avg_30d"]
+                cp["transit_pct_change"] = pw["pct_change_7d_vs_baseline"]
+                cp["transit_7d_avg"] = pw["avg_7d"]
+                cp["transit_containers"] = pw["latest_containers"]
+                cp["transit_tankers"] = pw["latest_tankers"]
+                cp["transit_date"] = pw["latest_date"]
+                cp["transit_history_7d"] = pw["history_7d"]
+
+    # ── Post-process: Stabilise procurement categories ──
+    prev_data = load_previous_data()
+    raw_cats = result.get("procurement_categories", [])
+    result["procurement_categories"] = stabilise_risk_ratings(raw_cats, prev_data)
+
+    # ── Post-process: Override LLM KPIs with COMPUTED values ──
     kpi = result.get("kpi_summary", {})
 
-    # 1. Count high-risk categories from actual procurement_categories
     cats = result.get("procurement_categories", [])
     high_risk_count = sum(1 for c in cats if (c.get("risk", "")).upper() in ("H", "HIGH"))
     kpi["categories_at_high_risk"] = high_risk_count
 
-    # 2. Count chokepoint disruptions from actual chokepoint_status
     chokes = result.get("chokepoint_status", [])
     disrupted_count = sum(1 for cp in chokes if cp.get("status", "OPEN").upper() in ("RESTRICTED", "CLOSED"))
     kpi["active_chokepoint_disruptions"] = disrupted_count
 
-    # 3. Compute avg shipping delay from chokepoint delay_hours
     delays = [cp.get("delay_hours", 0) for cp in chokes if cp.get("delay_hours", 0) > 0]
     if delays:
         avg_delay_hours = sum(delays) / len(delays)
@@ -406,7 +654,7 @@ WRITING QUALITY:
 
     result["kpi_summary"] = kpi
 
-    # 4. Filter timeline events: remove any with future dates
+    # Filter timeline events: remove any with future dates
     today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     timeline = result.get("timeline_events", [])
     result["timeline_events"] = [
@@ -424,14 +672,23 @@ async def main():
     for c in commodities:
         print(f"    {c['name']}: {c['price']} {c['unit']} (24h: {c['change_24h']}%, 7d: {c['change_7d']}%)")
 
+    print("Fetching chokepoint transit data (IMF PortWatch)...")
+    chokepoint_data = await fetch_chokepoint_transit()
+
     print("Fetching news...")
     news = await fetch_news()
     print(f"  Got {len(news)} articles")
 
     print("Generating intelligence brief...")
-    intelligence = call_llm(commodities, news)
+    intelligence = call_llm(commodities, news, chokepoint_data)
     print(f"  Risk: {intelligence.get('overall_risk')}")
     print(f"  Categories: {len(intelligence.get('procurement_categories', []))}")
+
+    # Log stabilisation results
+    for cat in intelligence.get("procurement_categories", []):
+        consec = cat.get("_consecutive_lower", 0)
+        marker = " (held — awaiting confirmation)" if consec > 0 else ""
+        print(f"    {cat['name']:45s} Risk: {cat.get('risk','?')}{marker}")
 
     output = {
         "status": "ok",
@@ -440,6 +697,12 @@ async def main():
         "commodities": commodities,
         "intelligence": intelligence,
         "raw_news_count": len(news),
+        "data_sources": {
+            "commodities": "Yahoo Finance, Investing.com (JKM Platts Futures)",
+            "chokepoints": "IMF PortWatch (AIS vessel transit data)",
+            "news": "Google News RSS",
+            "analysis": "Claude AI (Anthropic)",
+        },
     }
 
     data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
