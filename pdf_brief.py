@@ -146,6 +146,12 @@ def generate_pdf(data: dict) -> bytes:
     story.append(title_table)
     story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER_GRAY, spaceBefore=1*mm, spaceAfter=2*mm))
 
+    # ── Disclaimer ──
+    story.append(Paragraph(
+        '<font color="#718096"><b>Disclaimer:</b> Macro-level analysis only — does not reflect individual supplier agreements or contract terms. Contact your category team for supplier-specific guidance.</font>',
+        ParagraphStyle("Disclaimer", fontName="Helvetica", fontSize=5.5, leading=7.5, textColor=TEXT_FAINT, alignment=TA_LEFT, spaceBefore=0, spaceAfter=1.5*mm)
+    ))
+
     # ── KPI Strip ──
     energy_trend = kpi.get("energy_cost_trend", "STABLE")
     energy_dir = energy_trend.split("—")[0].split(" - ")[0].split(" – ")[0].strip()
