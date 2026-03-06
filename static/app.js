@@ -92,7 +92,7 @@ function renderKPIStrip(intel) {
     { label: 'Supply Chain Disruption', value: kpi.supply_chain_disruption_level || 'MODERATE', icon: '<span class="kpi-trend ' + disruptionClass(kpi.supply_chain_disruption_level) + '">●</span>' },
     { label: 'Avg Shipping Delay', value: (kpi.avg_shipping_delay_days != null ? kpi.avg_shipping_delay_days + 'd' : '—'), icon: '' },
     { label: 'Chokepoint Disruptions', value: (kpi.active_chokepoint_disruptions != null ? kpi.active_chokepoint_disruptions + ' / 4' : '—'), icon: '' },
-    { label: 'High-Risk Categories', value: (kpi.categories_at_high_risk != null ? kpi.categories_at_high_risk + ' / 7' : '—'), icon: '' }
+    { label: 'High-Risk Categories', value: (kpi.categories_at_high_risk != null ? kpi.categories_at_high_risk + ' / 8' : '—'), icon: '' }
   ];
 
   var html = '';
@@ -463,203 +463,32 @@ function fetchIntelligence() {
     });
 }
 
-// ─── PDF Export (A4 portrait one-pager) ───
-function generatePDFContent() {
-  var data = window._lastData;
-  if (!data) { return null; }
-  var intel = data.intelligence || {};
-  var kpi = intel.kpi_summary || {};
-  var dateStr = new Date().toISOString().slice(0, 10);
-
-  // Shared inline styles
-  var bg = '#0c1220';
-  var surface = '#111827';
-  var border = '#1e2d40';
-  var textPrimary = '#e2e8f0';
-  var textMuted = '#94a3b8';
-  var textFaint = '#64748b';
-  var accent = '#38bdf8';
-
-  var riskColor = intel.overall_risk === 'HIGH' ? '#ef4444' : (intel.overall_risk === 'LOW' ? '#22c55e' : '#f59e0b');
-
-  var html = '<div style="font-family:Inter,system-ui,-apple-system,sans-serif;color:' + textPrimary + ';background:' + bg + ';padding:18px 22px;width:100%;box-sizing:border-box;">';
-
-  // ── Title Bar ──
-  html += '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid ' + border + ';padding-bottom:10px;margin-bottom:12px;">';
-  html += '<div style="font-size:13px;font-weight:700;letter-spacing:-0.01em;">Daily Geopolitical & Energy Procurement Intelligence Brief</div>';
-  html += '<div style="display:flex;gap:14px;align-items:center;">';
-  html += '<span style="font-size:9px;color:' + textMuted + ';">' + dateStr + '</span>';
-  html += '<span style="font-size:9px;font-weight:700;color:' + riskColor + ';background:rgba(0,0,0,0.4);padding:3px 10px;border-radius:4px;border:1px solid ' + riskColor + ';">' + (intel.overall_risk || 'MEDIUM') + ' RISK</span>';
-  html += '</div></div>';
-
-  // ── KPI Strip — 6 items ──
-  html += '<div style="display:flex;gap:8px;margin-bottom:12px;">';
-  var kpiItems = [
-    ['COGS Pressure', kpi.overall_cogs_pressure || 'STABLE'],
-    ['Energy Trend', (kpi.energy_cost_trend || 'STABLE').split('\u2014')[0].split(' - ')[0].split(' \u2013 ')[0].trim()],
-    ['Disruption Level', kpi.supply_chain_disruption_level || 'MODERATE'],
-    ['Avg Ship Delay', (kpi.avg_shipping_delay_days != null ? kpi.avg_shipping_delay_days + ' days' : '\u2014')],
-    ['Chokepoint Issues', (kpi.active_chokepoint_disruptions != null ? kpi.active_chokepoint_disruptions + ' / 4' : '\u2014')],
-    ['High-Risk Categories', (kpi.categories_at_high_risk != null ? kpi.categories_at_high_risk + ' / 7' : '\u2014')]
-  ];
-  kpiItems.forEach(function(k) {
-    html += '<div style="flex:1;background:' + surface + ';border:1px solid ' + border + ';border-radius:4px;padding:6px 6px 5px;text-align:center;">';
-    html += '<div style="font-size:10px;font-weight:700;color:' + textPrimary + ';line-height:1.2;">' + k[1] + '</div>';
-    html += '<div style="font-size:6.5px;color:' + textFaint + ';text-transform:uppercase;letter-spacing:0.04em;margin-top:2px;">' + k[0] + '</div>';
-    html += '</div>';
-  });
-  html += '</div>';
-
-  // ── Executive Summary — 5 bullets ──
-  html += '<div style="margin-bottom:10px;">';
-  html += '<div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:' + textFaint + ';margin-bottom:4px;">Executive Summary</div>';
-  if (Array.isArray(intel.executive_summary)) {
-    intel.executive_summary.slice(0, 5).forEach(function(b) {
-      html += '<div style="font-size:8px;color:#cbd5e1;margin-bottom:3px;padding-left:10px;position:relative;line-height:1.45;">';
-      html += '<span style="position:absolute;left:0;color:' + accent + ';font-size:9px;">\u2022</span>' + b;
-      html += '</div>';
-    });
-  }
-  html += '</div>';
-
-  // ── Two-column: Energy Markets | Chokepoints + Freight ──
-  html += '<div style="display:flex;gap:12px;margin-bottom:10px;">';
-
-  // Left: Energy Markets
-  html += '<div style="flex:1;">';
-  html += '<div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:' + textFaint + ';margin-bottom:4px;">Energy Markets</div>';
-  html += '<table style="width:100%;border-collapse:collapse;">';
-  html += '<tr style="border-bottom:1px solid ' + border + ';"><th style="text-align:left;padding:2px 3px;font-size:7px;color:' + textFaint + ';font-weight:600;">Commodity</th><th style="text-align:right;padding:2px 3px;font-size:7px;color:' + textFaint + ';font-weight:600;">Price</th><th style="text-align:right;padding:2px 3px;font-size:7px;color:' + textFaint + ';font-weight:600;">24h</th><th style="text-align:right;padding:2px 3px;font-size:7px;color:' + textFaint + ';font-weight:600;">7d</th></tr>';
-  if (data.commodities) {
-    data.commodities.forEach(function(c) {
-      var c24 = c.change_24h || 0;
-      var c7 = c.change_7d || 0;
-      var col24 = c24 > 0 ? '#22c55e' : (c24 < 0 ? '#ef4444' : textMuted);
-      var col7 = c7 > 0 ? '#22c55e' : (c7 < 0 ? '#ef4444' : textMuted);
-      html += '<tr style="border-bottom:1px solid ' + border + ';">';
-      html += '<td style="padding:3px;font-size:8px;color:' + textPrimary + ';font-weight:500;">' + c.name + '</td>';
-      html += '<td style="padding:3px;text-align:right;font-size:8px;color:' + textPrimary + ';font-weight:600;">' + c.price.toFixed(2) + ' <span style="font-size:6px;color:' + textFaint + ';">' + c.unit + '</span></td>';
-      html += '<td style="padding:3px;text-align:right;font-size:8px;color:' + col24 + ';">' + (c24 > 0 ? '+' : '') + c24.toFixed(2) + '%</td>';
-      html += '<td style="padding:3px;text-align:right;font-size:8px;color:' + col7 + ';">' + (c7 > 0 ? '+' : '') + c7.toFixed(2) + '%</td>';
-      html += '</tr>';
-    });
-  }
-  html += '</table></div>';
-
-  // Right: Chokepoints + Freight
-  html += '<div style="flex:1;">';
-  html += '<div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:' + textFaint + ';margin-bottom:4px;">Chokepoint Status</div>';
-  if (intel.chokepoint_status) {
-    intel.chokepoint_status.forEach(function(cp) {
-      var sc = cp.status === 'OPEN' ? '#22c55e' : (cp.status === 'CLOSED' ? '#ef4444' : '#f59e0b');
-      html += '<div style="display:flex;justify-content:space-between;font-size:8px;padding:2px 0;border-bottom:1px solid ' + border + ';">';
-      html += '<span style="color:' + textPrimary + ';">' + cp.name + '</span>';
-      html += '<span style="color:' + sc + ';font-weight:700;">' + cp.status + (cp.delay_hours > 0 ? ' (+' + cp.delay_hours + 'h)' : '') + '</span>';
-      html += '</div>';
-    });
-  }
-  html += '<div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:' + textFaint + ';margin-top:8px;margin-bottom:4px;">Container Freight Rates</div>';
-  if (intel.container_freight_rates) {
-    html += '<table style="width:100%;border-collapse:collapse;">';
-    html += '<tr style="border-bottom:1px solid ' + border + ';"><th style="text-align:left;padding:2px;font-size:7px;color:' + textFaint + ';font-weight:600;">Route</th><th style="text-align:right;padding:2px;font-size:7px;color:' + textFaint + ';font-weight:600;">20ft</th><th style="text-align:right;padding:2px;font-size:7px;color:' + textFaint + ';font-weight:600;">7d</th></tr>';
-    intel.container_freight_rates.forEach(function(fr) {
-      var chg = fr.change_7d || '';
-      var chgCol = chg.indexOf('+') !== -1 ? '#ef4444' : (chg.indexOf('-') !== -1 ? '#22c55e' : textMuted);
-      html += '<tr style="border-bottom:1px solid ' + border + ';">';
-      html += '<td style="padding:2px;font-size:7.5px;color:' + textPrimary + ';">' + fr.route + '</td>';
-      html += '<td style="padding:2px;text-align:right;font-size:7.5px;color:' + textPrimary + ';font-weight:600;">' + fr.rate_20ft + '</td>';
-      html += '<td style="padding:2px;text-align:right;font-size:7.5px;color:' + chgCol + ';">' + chg + '</td>';
-      html += '</tr>';
-    });
-    html += '</table>';
-  }
-  html += '</div>';
-  html += '</div>';
-
-  // ── Procurement Category Exposure Matrix ──
-  html += '<div style="margin-bottom:10px;">';
-  html += '<div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:' + textFaint + ';margin-bottom:4px;">Procurement Category Exposure</div>';
-  html += '<table style="width:100%;border-collapse:collapse;">';
-  html += '<tr style="border-bottom:1px solid ' + border + ';"><th style="text-align:left;padding:2px 3px;font-size:7px;color:' + textFaint + ';font-weight:600;">Category</th><th style="text-align:center;padding:2px 3px;font-size:7px;color:' + textFaint + ';font-weight:600;">Energy</th><th style="text-align:center;padding:2px 3px;font-size:7px;color:' + textFaint + ';font-weight:600;">Risk</th><th style="text-align:left;padding:2px 3px;font-size:7px;color:' + textFaint + ';font-weight:600;">Mitigation</th></tr>';
-  if (intel.procurement_categories) {
-    intel.procurement_categories.forEach(function(cat) {
-      var riskVal = (cat.risk || '').toUpperCase();
-      var rc = (riskVal === 'H' || riskVal === 'HIGH') ? '#ef4444' : ((riskVal === 'L' || riskVal === 'LOW') ? '#22c55e' : '#f59e0b');
-      var riskBg = (riskVal === 'H' || riskVal === 'HIGH') ? 'rgba(239,68,68,0.12)' : ((riskVal === 'L' || riskVal === 'LOW') ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)');
-      html += '<tr style="border-bottom:1px solid ' + border + ';background:' + riskBg + ';">';
-      html += '<td style="padding:3px;font-size:8px;color:' + textPrimary + ';font-weight:600;">' + cat.name + '</td>';
-      html += '<td style="padding:3px;text-align:center;font-size:8px;color:' + textMuted + ';">' + (cat.energy_sensitivity || '\u2014') + '</td>';
-      html += '<td style="padding:3px;text-align:center;font-size:8px;color:' + rc + ';font-weight:700;">' + (cat.risk || '\u2014') + '</td>';
-      html += '<td style="padding:3px;font-size:7.5px;color:' + textMuted + ';">' + (cat.suggested_mitigation || '\u2014') + '</td>';
-      html += '</tr>';
-    });
-  }
-  html += '</table></div>';
-
-  // ── COGS Outlook Bar ──
-  if (intel.cogs_outlook) {
-    html += '<div style="background:' + surface + ';border:1px solid ' + border + ';border-radius:4px;padding:6px 10px;margin-bottom:10px;display:flex;gap:10px;align-items:baseline;">';
-    html += '<span style="font-size:8px;font-weight:700;color:' + accent + ';text-transform:uppercase;letter-spacing:0.04em;flex-shrink:0;">COGS Outlook</span>';
-    html += '<span style="font-size:8px;color:#cbd5e1;line-height:1.4;">' + intel.cogs_outlook + '</span>';
-    html += '</div>';
-  }
-
-  // ── Sources Footer ──
-  var genTime = data.timestamp ? new Date(data.timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : new Date().toISOString().slice(0, 16);
-  html += '<div style="font-size:6.5px;color:' + textFaint + ';text-align:center;border-top:1px solid ' + border + ';padding-top:6px;margin-top:2px;">';
-  html += 'Sources: Yahoo Finance, Google News, Claude AI (Anthropic), Natural Earth &nbsp;|&nbsp; Generated ' + genTime;
-  html += '</div>';
-
-  html += '</div>';
-  return html;
-}
-
+// ─── PDF Export (server-side reportlab) ───
 document.getElementById('exportPdf').addEventListener('click', function() {
-  var pdfHtml = generatePDFContent();
-  if (!pdfHtml) { alert('No data loaded yet. Please wait for the dashboard to load.'); return; }
+  if (!window._lastData) { alert('No data loaded yet. Please wait for the dashboard to load.'); return; }
 
   var btn = document.getElementById('exportPdf');
   btn.disabled = true;
   btn.innerHTML = '<i data-lucide="loader"></i> Generating...';
 
-  // Create a wrapper that's visible to html2canvas but hidden from the user
-  var wrapper = document.createElement('div');
-  wrapper.style.cssText = 'position:absolute;top:0;left:0;width:794px;height:auto;overflow:hidden;z-index:-1;opacity:0;pointer-events:none;';
-
-  var tempDiv = document.createElement('div');
-  tempDiv.id = 'pdfExport';
-  tempDiv.style.cssText = 'width:794px;min-height:1123px;overflow:visible;';
-  tempDiv.innerHTML = pdfHtml;
-  wrapper.appendChild(tempDiv);
-  document.body.appendChild(wrapper);
-
-  // Force layout computation before capture
-  void tempDiv.offsetHeight;
-
-  var opt = {
-    margin: [0.2, 0.2, 0.2, 0.2],
-    filename: 'Daily_Intelligence_Brief_' + new Date().toISOString().slice(0, 10) + '.pdf',
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: '#0c1220',
-      width: 794,
-      height: tempDiv.scrollHeight || 1123,
-      logging: false,
-      removeContainer: false
-    },
-    jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
-  };
-
-  html2pdf().set(opt).from(tempDiv).save()
-    .then(function() {
-      document.body.removeChild(wrapper);
+  fetch(API_BASE + '/api/export-pdf')
+    .then(function(r) {
+      if (!r.ok) { throw new Error('PDF generation failed (status ' + r.status + ')'); }
+      return r.blob();
+    })
+    .then(function(blob) {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'Intelligence_Brief_' + new Date().toISOString().slice(0, 10) + '.pdf';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     })
     .catch(function(err) {
-      console.error('PDF generation error:', err);
-      alert('PDF generation failed: ' + (err.message || err));
-      if (wrapper.parentNode) { document.body.removeChild(wrapper); }
+      console.error('PDF export error:', err);
+      alert('PDF export failed: ' + err.message);
     })
     .finally(function() {
       btn.disabled = false;

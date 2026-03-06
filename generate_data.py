@@ -167,7 +167,7 @@ Produce ONLY valid JSON (no markdown fences):
     "supply_chain_disruption_level": "SEVERE or MODERATE or MINIMAL",
     "avg_shipping_delay_days": <number>,
     "active_chokepoint_disruptions": <number 0-4>,
-    "categories_at_high_risk": <number 0-7>
+    "categories_at_high_risk": <number 0-8>
   }},
   "container_freight_rates": [
     {{"route": "Shanghai → Rotterdam", "rate_20ft": "$XXXX", "change_7d": "+X%", "conflict_impact": "1 short sentence"}},
@@ -177,13 +177,14 @@ Produce ONLY valid JSON (no markdown fences):
     {{"route": "Jebel Ali → Rotterdam", "rate_20ft": "$XXXX", "change_7d": "+X%", "conflict_impact": "1 short sentence"}}
   ],
   "procurement_categories": [
-    {{"name": "Cellulose Acetate Filter Tow", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "MAX 8 words"}},
-    {{"name": "Cigarette Packaging (Board & Print)", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "MAX 8 words"}},
-    {{"name": "Flexible Packaging & Foils", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "MAX 8 words"}},
-    {{"name": "Flavors & Ingredients", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "MAX 8 words"}},
-    {{"name": "Heated Tobacco Devices & Consumables", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "MAX 8 words"}},
-    {{"name": "E-Cigarettes & Vape Devices", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "MAX 8 words"}},
-    {{"name": "Nicotine Pouches", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "MAX 8 words"}}
+    {{"name": "Cellulose Acetate Filter Tow", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
+    {{"name": "Cigarette Paper", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
+    {{"name": "Cigarette Packaging (Board & Print)", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
+    {{"name": "Pouch Packaging (Resins)", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
+    {{"name": "Flavors & Ingredients", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
+    {{"name": "Heated Tobacco Devices & Consumables", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
+    {{"name": "E-Cigarettes & Vape Devices", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
+    {{"name": "Nicotine Pouches", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}}
   ],
   "chokepoint_status": [
     {{"name": "Strait of Hormuz", "status": "OPEN/RESTRICTED/CLOSED", "delay_hours": 0, "detail": "MAX 10 words"}},
@@ -210,13 +211,14 @@ RULES:
 - State facts, risks, and outlook.
 - The 'suggested_mitigation' field must describe GENERAL strategic approaches (e.g. 'supply base diversification', 'forward cover extension') — NEVER name specific countries, suppliers, or sourcing locations.
 - 3 top stories. Each top_story MUST include a 'news_idx' field matching one of the idx values from NEWS HEADLINES. Do NOT generate URLs — URLs are injected automatically from the news_idx mapping.
-- 5 timeline events.
+- 5 timeline events. All events must be from TODAY or EARLIER — never include future-dated events or forecasts. Only confirmed, already-occurred events.
 - Each executive_summary bullet must be MAX 1 sentence, sharp and data-driven. Do NOT prefix bullets with numbers or labels.
 - Container freight rates: estimate realistic current market rates based on commodity/shipping data and news context. Use USD values.
 - KPI summary: derive from all the data. categories_at_high_risk = count of procurement categories with risk H.
+- The 'suggested_mitigation' field must contain 1-2 sentences with specific strategic approaches. Include detail on HOW to mitigate (e.g. 'Extend forward coverage on energy-linked raw materials to lock in current pricing through Q3, and diversify converting suppliers across regions to reduce single-source exposure'). NEVER name specific countries or suppliers.
 - Heatmap detail: MAX 8 words per region.
 - Chokepoint detail: MAX 10 words each.
-- Procurement rationale: MAX 1 sentence. suggested_mitigation: MAX 8 words.
+- Procurement rationale: MAX 1 sentence. suggested_mitigation: 1-2 sentences with specific strategic detail.
 
 WRITING QUALITY:
 - Write complete, grammatically correct sentences — never telegraph-style shorthand.
@@ -292,6 +294,38 @@ WRITING QUALITY:
     for story in result.get("top_stories", []):
         if not story.get("url"):
             story["url"] = "#"
+
+    # ── POST-PROCESS: Override LLM KPIs with COMPUTED values ──
+    # The LLM often miscounts. Compute from actual returned data.
+    kpi = result.get("kpi_summary", {})
+
+    # 1. Count high-risk categories from actual procurement_categories
+    cats = result.get("procurement_categories", [])
+    high_risk_count = sum(1 for c in cats if (c.get("risk", "")).upper() in ("H", "HIGH"))
+    kpi["categories_at_high_risk"] = high_risk_count
+
+    # 2. Count chokepoint disruptions from actual chokepoint_status
+    chokes = result.get("chokepoint_status", [])
+    disrupted_count = sum(1 for cp in chokes if cp.get("status", "OPEN").upper() in ("RESTRICTED", "CLOSED"))
+    kpi["active_chokepoint_disruptions"] = disrupted_count
+
+    # 3. Compute avg shipping delay from chokepoint delay_hours
+    delays = [cp.get("delay_hours", 0) for cp in chokes if cp.get("delay_hours", 0) > 0]
+    if delays:
+        avg_delay_hours = sum(delays) / len(delays)
+        kpi["avg_shipping_delay_days"] = round(avg_delay_hours / 24, 0)
+    else:
+        kpi["avg_shipping_delay_days"] = 0
+
+    result["kpi_summary"] = kpi
+
+    # 4. Filter timeline events: remove any with future dates
+    today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    timeline = result.get("timeline_events", [])
+    result["timeline_events"] = [
+        ev for ev in timeline
+        if (ev.get("date", "") or "") <= today_str
+    ][:5]
 
     return result
 

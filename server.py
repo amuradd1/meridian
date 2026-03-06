@@ -5,11 +5,12 @@ For Railway deployment: serves everything from one process on $PORT.
 """
 import json
 import os
+from datetime import datetime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -31,6 +32,21 @@ async def get_intelligence():
     if data:
         return data
     return {"status": "generating", "message": "Intelligence data is being generated. Please wait..."}
+
+
+@app.get("/api/export-pdf")
+async def export_pdf():
+    data = load_data()
+    if not data or data.get("status") != "ok":
+        return Response(content="No data available", status_code=503)
+    from pdf_brief import generate_pdf
+    pdf_bytes = generate_pdf(data)
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="Intelligence_Brief_{date_str}.pdf"'}
+    )
 
 
 @app.get("/api/health")
