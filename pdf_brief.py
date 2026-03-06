@@ -287,6 +287,118 @@ def generate_pdf(data: dict) -> bytes:
     ]))
     story.append(layout_table)
 
+    # ── Container Freight Rates ──
+    freight_rates = intel.get("container_freight_rates", [])
+    if freight_rates:
+        story.append(Paragraph("CONTAINER FREIGHT RATES", styles["section_header"]))
+        freight_header = [
+            Paragraph("<b>ROUTE</b>", styles["table_header"]),
+            Paragraph("<b>20FT RATE</b>", styles["table_header"]),
+            Paragraph("<b>7D</b>", styles["table_header"]),
+            Paragraph("<b>CONFLICT IMPACT</b>", styles["table_header"]),
+        ]
+        freight_rows = [freight_header]
+        for fr in freight_rates[:5]:
+            c7 = fr.get("change_7d", "0%")
+            c7_str = c7 if isinstance(c7, str) else f"{c7:+.1f}%"
+            is_negative = "-" in c7_str
+            col7 = GREEN if is_negative else RED  # lower freight = good
+            freight_rows.append([
+                Paragraph(f'<b>{fr.get("route", "")}</b>', styles["table_cell_bold"]),
+                Paragraph(fr.get("rate_20ft", "—"), styles["table_cell"]),
+                Paragraph(f'<font color="{col7.hexval()}">{c7_str}</font>', styles["table_cell"]),
+                Paragraph(fr.get("conflict_impact", "—"), styles["body_muted"]),
+            ])
+
+        freight_col_widths = [usable_w*0.24, usable_w*0.12, usable_w*0.08, usable_w*0.56]
+        freight_table = Table(freight_rows, colWidths=freight_col_widths)
+        freight_table.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), LIGHT_GRAY),
+            ("LINEBELOW", (0,0), (-1,0), 0.5, BORDER_GRAY),
+            ("LINEBELOW", (0,1), (-1,-1), 0.25, BORDER_GRAY),
+            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+            ("TOPPADDING", (0,0), (-1,-1), 2),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+            ("LEFTPADDING", (0,0), (-1,-1), 2),
+            ("RIGHTPADDING", (0,0), (-1,-1), 2),
+        ]))
+        story.append(freight_table)
+
+    # ── Two-column: Top Stories | Timeline ──
+    top_stories = intel.get("top_stories", [])
+    timeline_events = intel.get("timeline_events", [])
+    if top_stories or timeline_events:
+        story.append(Spacer(1, 1*mm))
+
+        # Top Stories mini-table
+        stories_elements = []
+        if top_stories:
+            stories_elements.append(Paragraph("GEOPOLITICAL RISK MONITOR", styles["section_header"]))
+            for s in top_stories[:3]:
+                rel = (s.get("relevance", "MEDIUM")).upper()
+                rc = risk_color(rel)
+                stories_elements.append(Paragraph(
+                    f'<font color="{rc.hexval()}"><b>[{rel}]</b></font> '
+                    f'<b>{s.get("headline", "")}</b> '
+                    f'<font color="{TEXT_FAINT.hexval()}">({s.get("source", "")})</font>',
+                    ParagraphStyle("StoryLine", fontName="Helvetica", fontSize=7, leading=9.5,
+                                   textColor=TEXT_PRIMARY, spaceBefore=1*mm)
+                ))
+                summary = s.get("summary", "")
+                if summary:
+                    stories_elements.append(Paragraph(
+                        summary,
+                        ParagraphStyle("StorySummary", fontName="Helvetica", fontSize=6.5, leading=8.5,
+                                       textColor=TEXT_MUTED, leftIndent=3*mm, spaceBefore=0.5*mm)
+                    ))
+
+        # Timeline mini-table
+        timeline_elements = []
+        if timeline_events:
+            timeline_elements.append(Paragraph("CONFLICT ESCALATION TIMELINE", styles["section_header"]))
+            for ev in timeline_events[:5]:
+                sev = (ev.get("severity", "MEDIUM")).upper()
+                sc = risk_color(sev)
+                date_str_ev = ev.get("date", "")
+                try:
+                    dt_ev = datetime.strptime(date_str_ev, "%Y-%m-%d")
+                    date_display = dt_ev.strftime("%d %b")
+                except Exception:
+                    date_display = date_str_ev
+                timeline_elements.append(Paragraph(
+                    f'<font color="{sc.hexval()}">●</font> '
+                    f'<font color="{TEXT_FAINT.hexval()}"><b>{date_display}</b></font> — '
+                    f'{ev.get("event", "")}',
+                    ParagraphStyle("TimelineLine", fontName="Helvetica", fontSize=7, leading=9.5,
+                                   textColor=TEXT_PRIMARY, spaceBefore=1.2*mm)
+                ))
+
+        # Build as two-column layout if both exist, else full width
+        if stories_elements and timeline_elements:
+            stories_cell = []
+            for el in stories_elements:
+                stories_cell.append(el)
+            timeline_cell = []
+            for el in timeline_elements:
+                timeline_cell.append(el)
+
+            two_col_news = Table(
+                [[stories_cell, timeline_cell]],
+                colWidths=[usable_w*0.55, usable_w*0.45]
+            )
+            two_col_news.setStyle(TableStyle([
+                ("VALIGN", (0,0), (-1,-1), "TOP"),
+                ("LEFTPADDING", (0,0), (-1,-1), 0),
+                ("RIGHTPADDING", (0,0), (0,-1), 3*mm),
+                ("LEFTPADDING", (1,0), (1,-1), 2*mm),
+                ("TOPPADDING", (0,0), (-1,-1), 0),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+            ]))
+            story.append(two_col_news)
+        else:
+            for el in stories_elements + timeline_elements:
+                story.append(el)
+
     # ── Procurement Category Exposure Matrix ──
     story.append(Paragraph("PROCUREMENT CATEGORY EXPOSURE", styles["section_header"]))
     proc_header = [
