@@ -256,14 +256,14 @@ Produce ONLY valid JSON (no markdown fences):
     {{"route": "Jebel Ali → Rotterdam", "rate_20ft": "$XXXX", "change_7d": "+X%", "conflict_impact": "1 short sentence"}}
   ],
   "procurement_categories": [
-    {{"name": "Cellulose Acetate Filter Tow", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
-    {{"name": "Cigarette Paper", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
-    {{"name": "Cigarette Packaging (Board & Print)", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
-    {{"name": "Pouch Packaging (Resins)", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
-    {{"name": "Flavors & Ingredients", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
-    {{"name": "Heated Tobacco Devices & Consumables", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
-    {{"name": "E-Cigarettes & Vape Devices", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
-    {{"name": "Nicotine Pouches", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}}
+    {{"name": "Cellulose Acetate Filter Tow", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "risk_driver": "3-5 word primary risk driver e.g. 'Energy feedstock costs' or 'Single-source China assembly'", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
+    {{"name": "Cigarette Paper", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "risk_driver": "3-5 words", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
+    {{"name": "Cigarette Packaging (Board & Print)", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "risk_driver": "3-5 words", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
+    {{"name": "Pouch Packaging (Resins)", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "risk_driver": "3-5 words", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
+    {{"name": "Flavors & Ingredients", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "risk_driver": "3-5 words", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
+    {{"name": "Heated Tobacco Devices & Consumables", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "risk_driver": "3-5 words", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
+    {{"name": "E-Cigarettes & Vape Devices", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "risk_driver": "3-5 words", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}},
+    {{"name": "Nicotine Pouches", "energy_sensitivity": "H/M/L", "supply_route_exposure": "1 sentence", "risk": "H/M/L", "risk_driver": "3-5 words", "rationale": "MAX 1 sentence", "suggested_mitigation": "1-2 sentences with specific strategic detail"}}
   ],
   "chokepoint_status": [
     {{"name": "Strait of Hormuz", "status": "OPEN/RESTRICTED/CLOSED", "delay_hours": 0, "detail": "MAX 10 words"}},
@@ -304,6 +304,7 @@ RULES:
 - Heatmap detail: MAX 8 words per region.
 - Chokepoint detail: MAX 10 words each.
 - Procurement rationale: MAX 1 sentence. suggested_mitigation: 1-2 sentences with specific strategic detail.
+- risk_driver: 3-5 words identifying the PRIMARY factor driving the overall risk rating. This must explain WHY the risk differs from energy sensitivity when they diverge (e.g. 'Concentrated China/SEA sourcing', 'Hormuz chokepoint transit', 'Single-source supply base', 'Energy feedstock cost pass-through'). The CPO must immediately understand the core driver at a glance.
 - Analyst sentiment: provide a forward-looking outlook based on all available data. This is the analyst's professional assessment of market direction. 'overall' must be BEARISH, NEUTRAL, or BULLISH. Each outlook sentence must be informational, not directive.
 
 WRITING QUALITY:

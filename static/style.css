@@ -1001,6 +1001,40 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   line-height: 1.5;
 }
 
+/* ─── Disclaimer Bar ─── */
+.disclaimer-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-6);
+  background: var(--color-surface-2);
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.625rem;
+  color: var(--color-text-faint);
+  line-height: 1.5;
+}
+
+.disclaimer-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--color-text-faint);
+}
+
+/* ─── Risk Driver (Procurement Table) ─── */
+.risk-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.risk-driver {
+  font-size: 0.5625rem;
+  color: var(--color-text-muted);
+  line-height: 1.3;
+  font-style: italic;
+}
+
 .map-container {
   position: relative;
   min-height: 280px;

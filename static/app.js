@@ -314,15 +314,19 @@ function renderProcurement(categories) {
   categories.forEach(function(cat) {
     var riskCls = riskClass(cat.risk);
     var sensCls = riskClass(cat.energy_sensitivity);
+    var riskDriver = cat.risk_driver || '';
     html += '<tr class="procurement-row-' + riskCls + '">' +
       '<td><span class="procurement-category">' + cat.name + '</span></td>' +
       '<td><span class="risk-badge ' + sensCls + '" style="font-size:0.5625rem;padding:1px 6px">' + (cat.energy_sensitivity || '—') + '</span></td>' +
       '<td style="max-width:200px"><span style="font-size:var(--text-xs);color:var(--color-text-muted)">' + (cat.supply_route_exposure || '—') + '</span></td>' +
       '<td>' +
-        '<span class="tooltip-trigger">' +
-          '<span class="risk-badge ' + riskCls + '" style="font-size:0.5625rem;padding:2px 8px">' + (cat.risk || '—') + '</span>' +
-          '<span class="tooltip-content">' + (cat.rationale || 'No details available.') + '</span>' +
-        '</span>' +
+        '<div class="risk-cell">' +
+          '<span class="tooltip-trigger">' +
+            '<span class="risk-badge ' + riskCls + '" style="font-size:0.5625rem;padding:2px 8px">' + (cat.risk || '—') + '</span>' +
+            '<span class="tooltip-content">' + (cat.rationale || 'No details available.') + '</span>' +
+          '</span>' +
+          (riskDriver ? '<span class="risk-driver">' + riskDriver + '</span>' : '') +
+        '</div>' +
       '</td>' +
       '<td><span class="procurement-action">' + (cat.suggested_mitigation || '—') + '</span></td>' +
     '</tr>';
