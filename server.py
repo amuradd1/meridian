@@ -15,15 +15,34 @@ from fastapi.responses import FileResponse, Response
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
+# CORS: restrict to Railway domain + localhost for dev
+ALLOWED_ORIGINS = [
+    "https://procenergybrief.up.railway.app",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
 
 
 def load_data():
-    if os.path.exists(DATA_FILE):
+    """Load data.json with atomic read protection — handles partial writes gracefully."""
+    if not os.path.exists(DATA_FILE):
+        return None
+    try:
         with open(DATA_FILE) as f:
-            return json.load(f)
-    return None
+            raw = f.read()
+        return json.loads(raw)
+    except (json.JSONDecodeError, IOError) as e:
+        # File might be mid-write — return None so the API returns 'generating' state
+        print(f"[server] data.json read error (likely mid-write): {e}")
+        return None
 
 
 @app.get("/api/intelligence")
@@ -39,8 +58,18 @@ async def export_pdf():
     data = load_data()
     if not data or data.get("status") != "ok":
         return Response(content="No data available", status_code=503)
-    from pdf_brief import generate_pdf
-    pdf_bytes = generate_pdf(data)
+    try:
+        from pdf_brief import generate_pdf
+        pdf_bytes = generate_pdf(data)
+    except Exception as e:
+        print(f"[server] PDF generation error: {e}")
+        import traceback
+        traceback.print_exc()
+        return Response(
+            content=json.dumps({"error": "PDF generation failed", "detail": str(e)[:200]}),
+            status_code=422,
+            media_type="application/json",
+        )
     date_str = datetime.now().strftime("%Y-%m-%d")
     return Response(
         content=pdf_bytes,

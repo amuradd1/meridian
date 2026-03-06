@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 pdf_brief.py — Generates a clean, executive-level CPO Intelligence Brief PDF
-using reportlab. Fits on a single A4 page. Called by server.py /api/export-pdf.
+using reportlab. Consolidates key exec-level takeaways from the web dashboard.
+Called by server.py /api/export-pdf.
 """
 import io
 import json
@@ -15,7 +16,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    HRFlowable,
+    HRFlowable, KeepTogether,
 )
 
 # ── Colors ──
@@ -26,9 +27,11 @@ ACCENT = HexColor("#0369a1")
 RED = HexColor("#dc2626")
 AMBER = HexColor("#d97706")
 GREEN = HexColor("#16a34a")
+BLUE = HexColor("#2563eb")
 RED_BG = HexColor("#fef2f2")
 AMBER_BG = HexColor("#fffbeb")
 GREEN_BG = HexColor("#f0fdf4")
+BLUE_BG = HexColor("#eff6ff")
 LIGHT_GRAY = HexColor("#f7fafc")
 BORDER_GRAY = HexColor("#e2e8f0")
 
@@ -49,6 +52,10 @@ def get_styles():
         ),
         "body_muted": ParagraphStyle(
             "BodyMuted", fontName="Helvetica", fontSize=7.5, leading=10,
+            textColor=TEXT_MUTED, alignment=TA_LEFT,
+        ),
+        "body_small": ParagraphStyle(
+            "BodySmall", fontName="Helvetica", fontSize=6.5, leading=8.5,
             textColor=TEXT_MUTED, alignment=TA_LEFT,
         ),
         "bullet": ParagraphStyle(
@@ -76,6 +83,10 @@ def get_styles():
             "TableCellBold", fontName="Helvetica-Bold", fontSize=7.5, leading=10,
             textColor=TEXT_PRIMARY, alignment=TA_LEFT,
         ),
+        "table_cell_small": ParagraphStyle(
+            "TableCellSmall", fontName="Helvetica", fontSize=6.5, leading=8.5,
+            textColor=TEXT_MUTED, alignment=TA_LEFT,
+        ),
         "footer": ParagraphStyle(
             "Footer", fontName="Helvetica", fontSize=6, leading=8,
             textColor=TEXT_FAINT, alignment=TA_CENTER,
@@ -97,7 +108,7 @@ def risk_bg(level):
 
 
 def generate_pdf(data: dict) -> bytes:
-    """Generate a single-page A4 CPO intelligence brief PDF."""
+    """Generate an executive CPO intelligence brief PDF."""
     buf = io.BytesIO()
     styles = get_styles()
     intel = data.get("intelligence", {})
@@ -198,7 +209,7 @@ def generate_pdf(data: dict) -> bytes:
     elif isinstance(exec_summary, str):
         story.append(Paragraph(exec_summary, styles["body_muted"]))
 
-    # ── Two-column: Energy Markets | Chokepoints ──
+    # ── Two-column: Energy Markets | Container Freight Rates ──
     story.append(Spacer(1, 2*mm))
 
     # Energy Markets table
@@ -212,8 +223,9 @@ def generate_pdf(data: dict) -> bytes:
     for c in commodities[:6]:
         c24 = c.get("change_24h", 0)
         c7 = c.get("change_7d", 0)
-        col24 = GREEN if c24 >= 0 else RED
-        col7 = GREEN if c7 >= 0 else RED
+        # For commodities: price UP = red (bad for procurement), DOWN = green
+        col24 = RED if c24 > 0 else (GREEN if c24 < 0 else TEXT_MUTED)
+        col7 = RED if c7 > 0 else (GREEN if c7 < 0 else TEXT_MUTED)
         sign24 = "+" if c24 > 0 else ""
         sign7 = "+" if c7 > 0 else ""
         energy_rows.append([
@@ -223,7 +235,7 @@ def generate_pdf(data: dict) -> bytes:
             Paragraph(f'<font color="{col7.hexval()}">{sign7}{c7:.1f}%</font>', styles["table_cell"]),
         ])
 
-    energy_col_widths = [usable_w*0.20, usable_w*0.14, usable_w*0.08, usable_w*0.08]
+    energy_col_widths = [usable_w*0.18, usable_w*0.14, usable_w*0.07, usable_w*0.07]
     energy_table = Table(energy_rows, colWidths=energy_col_widths)
     energy_table.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), LIGHT_GRAY),
@@ -236,26 +248,32 @@ def generate_pdf(data: dict) -> bytes:
         ("RIGHTPADDING", (0,0), (-1,-1), 2),
     ]))
 
-    # Chokepoints table
-    choke_header = [
-        Paragraph("<b>CHOKEPOINT</b>", styles["table_header"]),
-        Paragraph("<b>STATUS</b>", styles["table_header"]),
-        Paragraph("<b>DELAY</b>", styles["table_header"]),
+    # Container Freight Rates table
+    freight_rates = intel.get("container_freight_rates", [])
+    freight_header = [
+        Paragraph("<b>ROUTE</b>", styles["table_header"]),
+        Paragraph("<b>20FT RATE</b>", styles["table_header"]),
+        Paragraph("<b>7D</b>", styles["table_header"]),
+        Paragraph("<b>CONFLICT IMPACT</b>", styles["table_header"]),
     ]
-    choke_rows = [choke_header]
-    for cp in intel.get("chokepoint_status", []):
-        status = cp.get("status", "OPEN")
-        sc = risk_color({"OPEN":"L","DISRUPTED":"M","SEVERELY DISRUPTED":"H"}.get(status, "M"))
-        delay_str = f'+{cp.get("delay_hours", 0)}h' if cp.get("delay_hours", 0) > 0 else "—"
-        choke_rows.append([
-            Paragraph(cp.get("name", ""), styles["table_cell_bold"]),
-            Paragraph(f'<font color="{sc.hexval()}"><b>{status}</b></font>', styles["table_cell"]),
-            Paragraph(delay_str, styles["table_cell"]),
+    freight_rows = [freight_header]
+    for fr in freight_rates[:5]:
+        change_str = fr.get("change_7d", "—")
+        is_up = "+" in str(change_str)
+        change_col = RED if is_up else GREEN  # freight up = bad
+        impact = fr.get("conflict_impact", "—")
+        if len(impact) > 60:
+            impact = impact[:57] + "..."
+        freight_rows.append([
+            Paragraph(f'<b>{fr.get("route", "—")}</b>', styles["table_cell_bold"]),
+            Paragraph(f'{fr.get("rate_20ft", "—")}', styles["table_cell"]),
+            Paragraph(f'<font color="{change_col.hexval()}">{change_str}</font>', styles["table_cell"]),
+            Paragraph(impact, styles["table_cell_small"]),
         ])
 
-    choke_col_widths = [usable_w*0.26, usable_w*0.12, usable_w*0.08]
-    choke_table = Table(choke_rows, colWidths=choke_col_widths)
-    choke_table.setStyle(TableStyle([
+    freight_col_widths = [usable_w*0.16, usable_w*0.10, usable_w*0.06, usable_w*0.22]
+    freight_table = Table(freight_rows, colWidths=freight_col_widths)
+    freight_table.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), LIGHT_GRAY),
         ("LINEBELOW", (0,0), (-1,0), 0.5, BORDER_GRAY),
         ("LINEBELOW", (0,1), (-1,-1), 0.25, BORDER_GRAY),
@@ -266,16 +284,16 @@ def generate_pdf(data: dict) -> bytes:
         ("RIGHTPADDING", (0,0), (-1,-1), 2),
     ]))
 
-    # Side by side layout
+    # Side by side: Energy Markets | Freight Rates
     two_col_header = [[
         Paragraph("ENERGY MARKETS", styles["section_header"]),
-        Paragraph("CHOKEPOINT STATUS", styles["section_header"]),
+        Paragraph("CONTAINER FREIGHT RATES", styles["section_header"]),
     ]]
-    two_col_data = [[energy_table, choke_table]]
+    two_col_data = [[energy_table, freight_table]]
 
     layout_table = Table(
         two_col_header + two_col_data,
-        colWidths=[usable_w*0.52, usable_w*0.48]
+        colWidths=[usable_w*0.48, usable_w*0.52]
     )
     layout_table.setStyle(TableStyle([
         ("VALIGN", (0,0), (-1,-1), "TOP"),
@@ -399,6 +417,73 @@ def generate_pdf(data: dict) -> bytes:
             for el in stories_elements + timeline_elements:
                 story.append(el)
 
+    # ── Chokepoint Status (enhanced with rerouting + transit data) ──
+    story.append(Paragraph("CHOKEPOINT STATUS", styles["section_header"]))
+    choke_header = [
+        Paragraph("<b>CHOKEPOINT</b>", styles["table_header"]),
+        Paragraph("<b>STATUS</b>", styles["table_header"]),
+        Paragraph("<b>ALERT</b>", styles["table_header"]),
+        Paragraph("<b>TRANSITS</b>", styles["table_header"]),
+        Paragraph("<b>VS BASELINE</b>", styles["table_header"]),
+        Paragraph("<b>REROUTING</b>", styles["table_header"]),
+    ]
+    choke_rows = [choke_header]
+    for cp in intel.get("chokepoint_status", []):
+        status = cp.get("status", "OPEN")
+        sc = risk_color({"OPEN":"L","DISRUPTED":"M","SEVERELY DISRUPTED":"H"}.get(status, "M"))
+
+        # Alert level
+        alert = cp.get("alert_level", "")
+        alert_col = RED if alert == "RED" else (AMBER if alert == "ORANGE" else TEXT_FAINT)
+        alert_str = f'<font color="{alert_col.hexval()}">{alert or "—"}</font>'
+
+        # Transit data
+        transit_latest = cp.get("transit_latest")
+        transit_str = str(transit_latest) if transit_latest is not None else "—"
+
+        pct = cp.get("transit_pct_change", 0)
+        pct_col = RED if pct <= -15 else (AMBER if pct < 0 else GREEN)
+        pct_sign = "+" if pct > 0 else ""
+        pct_str = f'<font color="{pct_col.hexval()}">{pct_sign}{pct:.1f}%</font>' if transit_latest is not None else "—"
+
+        # Rerouting
+        if cp.get("reroute_active") and cp.get("reroute_via"):
+            reroute_str = f'<font color="{BLUE.hexval()}">via {cp["reroute_via"]}<br/>+{cp.get("reroute_days_low",0)}–{cp.get("reroute_days_high",0)}d</font>'
+        else:
+            reroute_str = '<font color="#718096">—</font>'
+
+        choke_rows.append([
+            Paragraph(f'<b>{cp.get("name", "")}</b>', styles["table_cell_bold"]),
+            Paragraph(f'<font color="{sc.hexval()}"><b>{status}</b></font>', styles["table_cell"]),
+            Paragraph(alert_str, styles["table_cell"]),
+            Paragraph(transit_str, styles["table_cell"]),
+            Paragraph(pct_str, styles["table_cell"]),
+            Paragraph(reroute_str, styles["table_cell_small"]),
+        ])
+
+    choke_col_widths = [usable_w*0.20, usable_w*0.18, usable_w*0.08, usable_w*0.10, usable_w*0.12, usable_w*0.22]
+    choke_table = Table(choke_rows, colWidths=choke_col_widths)
+
+    choke_style_cmds = [
+        ("BACKGROUND", (0,0), (-1,0), LIGHT_GRAY),
+        ("LINEBELOW", (0,0), (-1,0), 0.5, BORDER_GRAY),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("TOPPADDING", (0,0), (-1,-1), 2),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+        ("LEFTPADDING", (0,0), (-1,-1), 2),
+        ("RIGHTPADDING", (0,0), (-1,-1), 2),
+    ]
+    # Colour-code rows by status
+    for i, cp in enumerate(intel.get("chokepoint_status", [])):
+        row_idx = i + 1
+        status = cp.get("status", "OPEN")
+        bg = {"SEVERELY DISRUPTED": RED_BG, "DISRUPTED": AMBER_BG, "OPEN": GREEN_BG}.get(status, LIGHT_GRAY)
+        choke_style_cmds.append(("BACKGROUND", (0, row_idx), (-1, row_idx), bg))
+        choke_style_cmds.append(("LINEBELOW", (0, row_idx), (-1, row_idx), 0.25, BORDER_GRAY))
+
+    choke_table.setStyle(TableStyle(choke_style_cmds))
+    story.append(choke_table)
+
     # ── Procurement Category Exposure Matrix ──
     story.append(Paragraph("PROCUREMENT CATEGORY EXPOSURE", styles["section_header"]))
     proc_header = [
@@ -416,7 +501,7 @@ def generate_pdf(data: dict) -> bytes:
         sens_label = cat.get("energy_sensitivity", "—")
         sens_rationale = cat.get("energy_sensitivity_rationale", "")
         if sens_rationale:
-            sens_label += " *"  # asterisk indicates dynamic override
+            sens_label += " *"
         mitigation = cat.get("suggested_mitigation", "—")
         if len(mitigation) > 140:
             mitigation = mitigation[:137] + "..."
@@ -449,6 +534,25 @@ def generate_pdf(data: dict) -> bytes:
 
     proc_table.setStyle(TableStyle(proc_style_cmds))
     story.append(proc_table)
+
+    # ── Top Stories (compact) ──
+    stories_data = intel.get("top_stories", [])
+    if stories_data:
+        story.append(Paragraph("KEY STORIES", styles["section_header"]))
+        for s in stories_data[:3]:
+            relevance = (s.get("relevance", "MEDIUM") or "MEDIUM").upper()
+            rel_col = risk_color({"HIGH":"H","LOW":"L"}.get(relevance, "M"))
+            headline = s.get("headline", "")
+            source = s.get("source", "")
+            summary = s.get("summary", "")
+            story.append(Paragraph(
+                f'<font color="{rel_col.hexval()}">●</font> '
+                f'<b>{headline}</b> '
+                f'<font size="6" color="{TEXT_FAINT.hexval()}">— {source}</font><br/>'
+                f'<font size="6.5" color="{TEXT_MUTED.hexval()}">{summary}</font>',
+                ParagraphStyle("StoryItem", fontName="Helvetica", fontSize=7.5, leading=10,
+                    textColor=TEXT_PRIMARY, spaceBefore=1*mm)
+            ))
 
     # ── Analyst Sentiment (compact) ──
     sentiment = intel.get("analyst_sentiment", {})

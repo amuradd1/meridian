@@ -12,6 +12,7 @@ import subprocess
 import time
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED
 
 
 def run_data_generation():
@@ -34,6 +35,14 @@ def run_data_generation():
         print(f"[INTEL-BRIEF] Data generation failed: {e}", flush=True)
 
 
+def scheduler_error_listener(event):
+    """Log scheduler errors and missed jobs."""
+    if event.exception:
+        print(f"[INTEL-BRIEF] Scheduler job {event.job_id} crashed: {event.exception}", flush=True)
+    else:
+        print(f"[INTEL-BRIEF] Scheduler event: {event}", flush=True)
+
+
 def main():
     port = int(os.environ.get("PORT", 8000))
 
@@ -41,11 +50,23 @@ def main():
     gen_thread = threading.Thread(target=run_data_generation, daemon=True)
     gen_thread.start()
 
-    # Schedule 24-hour refresh
+    # Schedule 24-hour refresh with misfire resilience:
+    # - misfire_grace_time=3600: if a job fires up to 1hr late (e.g. after Railway redeploy), still run it
+    # - coalesce=True: if multiple misfired runs stacked up, only run one
+    # - max_instances=1: prevent overlapping runs
     scheduler = BackgroundScheduler()
-    scheduler.add_job(run_data_generation, "interval", hours=24, id="data_refresh")
+    scheduler.add_job(
+        run_data_generation,
+        "interval",
+        hours=24,
+        id="data_refresh",
+        misfire_grace_time=3600,
+        coalesce=True,
+        max_instances=1,
+    )
+    scheduler.add_listener(scheduler_error_listener, EVENT_JOB_ERROR | EVENT_JOB_MISSED)
     scheduler.start()
-    print(f"[INTEL-BRIEF] Scheduled data refresh every 24 hours.", flush=True)
+    print(f"[INTEL-BRIEF] Scheduled data refresh every 24 hours (misfire grace: 1hr).", flush=True)
 
     # Start the FastAPI server (blocking)
     print(f"[INTEL-BRIEF] Starting server on port {port}...", flush=True)

@@ -8,6 +8,7 @@ import json
 import asyncio
 import os
 import time
+import tempfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
 
@@ -201,6 +202,111 @@ async def fetch_commodities():
             jkm_fb["history"] = [round(p * 1.15, 2) for p in ttf["history"]]
             commodities.append(jkm_fb)
     return commodities
+
+
+# ── FBX route mapping: our dashboard routes → Freightos Baltic Index tickers ──
+# FBX rates are 40ft (FEU). We display 20ft (TEU) — roughly FEU / 1.7 for a
+# conservative TEU estimate (industry convention: TEU ≈ 55-65% of FEU).
+FBX_ROUTE_MAP = {
+    "FBX11": {"route": "Shanghai → Rotterdam",  "description": "China/East Asia → North Europe"},
+    "FBX01": {"route": "Shanghai → Los Angeles", "description": "China/East Asia → NA West Coast"},
+    "FBX03": {"route": "Shanghai → New York",    "description": "China/East Asia → NA East Coast"},
+    "FBX22": {"route": "Rotterdam → New York",   "description": "North Europe → NA East Coast"},
+}
+FEU_TO_TEU_FACTOR = 1.7  # Industry standard: 20ft ≈ FEU / 1.7
+
+
+async def fetch_fbx_rates():
+    """Fetch live container freight rates from Freightos Baltic Index (FBX).
+    Extracts embedded data from the FBX page (server-side rendered JSON).
+    Returns list of rate dicts for our tracked routes, or empty list on failure."""
+    import re
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as http:
+            r = await http.get(
+                "https://www.freightos.com/enterprise/terminal/freightos-baltic-index-global-container-pricing-index/",
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            )
+        if r.status_code != 200:
+            print(f"  FBX: HTTP {r.status_code}")
+            return []
+
+        # Extract embedded ticker data: window.frProductIntroTickerData = {...}
+        m = re.search(r'frProductIntroTickerData\s*=\s*(\{.*?\});', r.text, re.DOTALL)
+        if not m:
+            print("  FBX: Could not find frProductIntroTickerData in page")
+            return []
+
+        import json as _json
+        raw = _json.loads(m.group(1))
+        # The data is nested under a dynamic key — get the first (only) value
+        ticker_list = list(raw.values())[0] if raw else []
+
+        # Also extract chart data for weekly history
+        history_map = {}  # ticker -> list of weekly values
+        m_chart = re.search(r'frProductIntroChartData\s*=\s*(\{.*?\});', r.text, re.DOTALL)
+        if m_chart:
+            try:
+                chart_raw = _json.loads(m_chart.group(1))
+                chart_list = list(chart_raw.values())[0] if chart_raw else []
+                for entry in chart_list:
+                    t = entry.get("ticker", "")
+                    v = entry.get("value")
+                    if t and v is not None:
+                        history_map.setdefault(t, []).append(v)
+            except Exception:
+                pass
+
+        # Build lookup: label -> {value, change}
+        fbx_lookup = {}
+        for item in ticker_list:
+            label = item.get("label", "")
+            val_str = item.get("value", "$0").replace("$", "").replace(",", "")
+            change_str = item.get("change", "0%").replace("%", "").replace("+", "")
+            try:
+                fbx_lookup[label] = {
+                    "feu_rate": float(val_str),
+                    "change_pct": float(change_str),
+                    "positive": item.get("positive", False),
+                }
+            except ValueError:
+                continue
+
+        print(f"  FBX: Got {len(fbx_lookup)} lane rates")
+
+        # Map to our routes
+        rates = []
+        for ticker, route_info in FBX_ROUTE_MAP.items():
+            if ticker not in fbx_lookup:
+                print(f"  FBX: Missing lane {ticker}")
+                continue
+            fbx = fbx_lookup[ticker]
+            feu_rate = fbx["feu_rate"]
+            teu_rate = round(feu_rate / FEU_TO_TEU_FACTOR)
+            change_7d = fbx["change_pct"]
+            sign = "+" if change_7d > 0 else ""
+            history = history_map.get(ticker, [])
+
+            rates.append({
+                "route": route_info["route"],
+                "rate_20ft": f"${teu_rate:,}",
+                "rate_40ft": f"${int(feu_rate):,}",
+                "change_7d": f"{sign}{change_7d:.1f}%",
+                "fbx_ticker": ticker,
+                "source": "FBX",
+                "conflict_impact": "",  # Will be filled by LLM
+                "history_weekly": [round(v / FEU_TO_TEU_FACTOR) for v in history] if history else [],
+            })
+
+        # Log what we got
+        for r in rates:
+            print(f"    {r['route']}: {r['rate_20ft']} (40ft: {r['rate_40ft']}, {r['change_7d']})")
+
+        return rates
+
+    except Exception as e:
+        print(f"  FBX fetch error: {e}")
+        return []
 
 
 async def fetch_chokepoint_transit():
@@ -519,7 +625,7 @@ def stabilise_risk_ratings(new_categories, prev_data):
     return stabilised
 
 
-def call_llm(commodities, news, chokepoint_data):
+def call_llm(commodities, news, chokepoint_data, fbx_rates=None):
     client = Anthropic(timeout=300.0)
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     trimmed_c = [{"name": c["name"], "price": c["price"], "unit": c["unit"], "change_24h": c["change_24h"], "change_7d": c["change_7d"]} for c in commodities]
@@ -528,6 +634,16 @@ def call_llm(commodities, news, chokepoint_data):
     for i, n in enumerate(news[:8]):
         news_for_prompt.append({"idx": i, "title": n["title"], "source": n["source"]})
     news_url_lookup = {i: n.get("url", "") for i, n in enumerate(news[:8])}
+
+    # Build FBX freight rate context
+    fbx_context = ""
+    if fbx_rates:
+        fbx_context = "LIVE CONTAINER FREIGHT RATES (Freightos Baltic Index — FBX):\n"
+        for fr in fbx_rates:
+            fbx_context += f"  {fr['route']}: {fr['rate_20ft']}/TEU ({fr['rate_40ft']}/FEU, {fr['change_7d']} week-on-week)\n"
+        fbx_context += "  NOTE: Jebel Ali → Rotterdam has NO FBX lane. You must ESTIMATE this route.\n\n"
+    else:
+        fbx_context = "LIVE CONTAINER FREIGHT RATES: FBX data unavailable — estimate all routes from news context.\n\n"
 
     # Build chokepoint context from real PortWatch data
     chokepoint_context = "CHOKEPOINT VESSEL TRANSIT DATA (IMF PortWatch — real AIS data):\n"
@@ -564,7 +680,7 @@ Category teams handle operational actions. The CPO needs situational awareness o
 COMMODITY PRICES (live):
 {json.dumps(trimmed_c, indent=2)}
 
-{chokepoint_context}
+{fbx_context}{chokepoint_context}
 
 NEWS HEADLINES (last 24-48 hours — reference by idx number):
 {json.dumps(news_for_prompt, indent=2)}
@@ -633,7 +749,7 @@ RULES:
 - 3 top stories. Each top_story MUST include a 'news_idx' field matching one of the idx values from NEWS HEADLINES. Do NOT generate URLs — URLs are injected automatically from the news_idx mapping.
 - 5 timeline events. All events must be from TODAY or EARLIER — never include future-dated events or forecasts. Only confirmed, already-occurred events.
 - Each executive_summary bullet must be MAX 1 sentence, sharp and data-driven. Do NOT prefix bullets with numbers or labels.
-- Container freight rates: estimate realistic current market rates based on commodity/shipping data and news context. Use USD values.
+- Container freight rates: For routes with FBX data provided above, use those EXACT rates as your base — do NOT invent different numbers. For Jebel Ali → Rotterdam (no FBX lane), estimate a realistic rate based on the Rotterdam → New York lane adjusted for the Gulf → Europe distance and any Hormuz/Red Sea disruption premiums. Use USD values.
 - KPI summary: derive from all the data. categories_at_high_risk = count of procurement categories with risk H.
 - The 'suggested_mitigation' field must contain 1-2 sentences with specific strategic approaches. Include detail on HOW to mitigate. NEVER name specific countries or suppliers.
 - CHOKEPOINT STATUS: Use the real vessel transit data provided above to inform your chokepoint assessments. The status, delay_hours, and detail should be CONSISTENT with the observed traffic drops. Do not contradict the PortWatch data.
@@ -741,6 +857,28 @@ WRITING QUALITY:
     raw_cats = result.get("procurement_categories", [])
     result["procurement_categories"] = stabilise_risk_ratings(raw_cats, prev_data)
 
+    # ── Post-process: Override LLM freight rates with FBX data ──
+    if fbx_rates:
+        # Build a lookup: route name → FBX rate dict
+        fbx_lookup = {fr["route"]: fr for fr in fbx_rates}
+        llm_freight = result.get("container_freight_rates", [])
+        for entry in llm_freight:
+            route_name = entry.get("route", "")
+            if route_name in fbx_lookup:
+                fbx = fbx_lookup[route_name]
+                entry["rate_20ft"] = fbx["rate_20ft"]
+                entry["rate_40ft"] = fbx["rate_40ft"]
+                entry["change_7d"] = fbx["change_7d"]
+                entry["source"] = "FBX"
+                entry["fbx_ticker"] = fbx.get("fbx_ticker", "")
+                if fbx.get("history_weekly"):
+                    entry["history_weekly"] = fbx["history_weekly"]
+            else:
+                # No FBX lane (e.g. Jebel Ali → Rotterdam) — keep LLM estimate
+                entry["source"] = "Estimated"
+        print(f"  FBX override: {sum(1 for e in llm_freight if e.get('source') == 'FBX')}/"
+              f"{len(llm_freight)} routes using live FBX rates")
+
     # ── Post-process: Override LLM KPIs with COMPUTED values ──
     kpi = result.get("kpi_summary", {})
 
@@ -772,50 +910,123 @@ WRITING QUALITY:
     return result
 
 
+def atomic_write_json(data: dict, path: str):
+    """Write JSON atomically: write to temp file then rename.
+    Prevents partial reads if the server reads data.json mid-write."""
+    dir_name = os.path.dirname(path)
+    try:
+        fd, tmp_path = tempfile.mkstemp(suffix=".tmp", dir=dir_name)
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp_path, path)  # atomic on POSIX
+    except Exception as e:
+        print(f"  Atomic write failed: {e}")
+        # Fallback to direct write
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+
+
 async def main():
-    print("Fetching commodity prices...")
-    commodities = await fetch_commodities()
-    print(f"  Got {len(commodities)} commodities")
-    for c in commodities:
-        print(f"    {c['name']}: {c['price']} {c['unit']} (24h: {c['change_24h']}%, 7d: {c['change_7d']}%)")
-
-    print("Fetching chokepoint transit data (IMF PortWatch)...")
-    chokepoint_data = await fetch_chokepoint_transit()
-
-    print("Fetching news...")
-    news = await fetch_news()
-    print(f"  Got {len(news)} articles")
-
-    print("Generating intelligence brief...")
-    intelligence = call_llm(commodities, news, chokepoint_data)
-    print(f"  Risk: {intelligence.get('overall_risk')}")
-    print(f"  Categories: {len(intelligence.get('procurement_categories', []))}")
-
-    # Log stabilisation results
-    for cat in intelligence.get("procurement_categories", []):
-        consec = cat.get("_consecutive_lower", 0)
-        marker = " (held — awaiting confirmation)" if consec > 0 else ""
-        print(f"    {cat['name']:45s} Risk: {cat.get('risk','?')}{marker}")
-
-    output = {
-        "status": "ok",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "next_refresh": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
-        "commodities": commodities,
-        "intelligence": intelligence,
-        "raw_news_count": len(news),
-        "data_sources": {
-            "commodities": "Yahoo Finance, Investing.com (JKM Platts Futures)",
-            "chokepoints": "IMF PortWatch (AIS vessel transit data)",
-            "news": "Google News RSS",
-            "analysis": "Claude AI (Anthropic)",
-        },
-    }
-
     data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
-    with open(data_path, "w") as f:
-        json.dump(output, f, indent=2)
-    print(f"Saved to data.json ({len(json.dumps(output))} bytes)")
+
+    # ── Validate Anthropic API key before expensive fetches ──
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key or len(api_key) < 10:
+        error_msg = "ANTHROPIC_API_KEY is missing or invalid"
+        print(f"  FATAL: {error_msg}")
+        # Write error state so dashboard shows a message instead of spinning forever
+        atomic_write_json({
+            "status": "error",
+            "message": error_msg,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }, data_path)
+        return
+
+    try:
+        print("Fetching commodity prices...")
+        commodities = await fetch_commodities()
+        print(f"  Got {len(commodities)} commodities")
+        for c in commodities:
+            print(f"    {c['name']}: {c['price']} {c['unit']} (24h: {c['change_24h']}%, 7d: {c['change_7d']}%)")
+
+        print("Fetching chokepoint transit data (IMF PortWatch)...")
+        chokepoint_data = await fetch_chokepoint_transit()
+
+        print("Fetching FBX container freight rates...")
+        fbx_rates = await fetch_fbx_rates()
+        if fbx_rates:
+            print(f"  Got {len(fbx_rates)} FBX lane rates")
+        else:
+            print("  FBX: No rates fetched — LLM will estimate all routes")
+
+        print("Fetching news...")
+        news = await fetch_news()
+        print(f"  Got {len(news)} articles")
+
+        # ── Guard: if ALL external sources failed, carry forward previous data ──
+        if not commodities and not chokepoint_data and not news:
+            print("  WARNING: All external data sources failed")
+            prev = load_previous_data()
+            if prev and prev.get("status") == "ok":
+                print("  Carrying forward previous data.json (all sources failed)")
+                prev["_stale_warning"] = "All external sources failed during refresh — data carried forward from previous cycle"
+                atomic_write_json(prev, data_path)
+                return
+            else:
+                # No previous data either — write error
+                atomic_write_json({
+                    "status": "error",
+                    "message": "All data sources unavailable and no previous data to carry forward",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }, data_path)
+                return
+
+        print("Generating intelligence brief...")
+        intelligence = call_llm(commodities, news, chokepoint_data, fbx_rates=fbx_rates)
+        print(f"  Risk: {intelligence.get('overall_risk')}")
+        print(f"  Categories: {len(intelligence.get('procurement_categories', []))}")
+
+        # Log stabilisation results
+        for cat in intelligence.get("procurement_categories", []):
+            consec = cat.get("_consecutive_lower", 0)
+            marker = " (held — awaiting confirmation)" if consec > 0 else ""
+            print(f"    {cat['name']:45s} Risk: {cat.get('risk','?')}{marker}")
+
+        output = {
+            "status": "ok",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "next_refresh": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
+            "commodities": commodities,
+            "intelligence": intelligence,
+            "raw_news_count": len(news),
+            "data_sources": {
+                "commodities": "Yahoo Finance, Investing.com (JKM Platts Futures)",
+                "freight_rates": "Freightos Baltic Index (FBX)" if fbx_rates else "LLM-estimated",
+                "chokepoints": "IMF PortWatch (AIS vessel transit data)",
+                "news": "Google News RSS",
+                "analysis": "Claude AI (Anthropic)",
+            },
+        }
+
+        atomic_write_json(output, data_path)
+        print(f"Saved to data.json ({len(json.dumps(output))} bytes)")
+
+    except Exception as e:
+        print(f"  CRITICAL ERROR in data generation: {e}")
+        import traceback
+        traceback.print_exc()
+        # Try to carry forward previous data
+        prev = load_previous_data()
+        if prev and prev.get("status") == "ok":
+            print("  Carrying forward previous data.json after crash")
+            prev["_stale_warning"] = f"Data generation failed ({type(e).__name__}). Carried forward from previous cycle."
+            atomic_write_json(prev, data_path)
+        else:
+            atomic_write_json({
+                "status": "error",
+                "message": f"Data generation failed: {type(e).__name__}: {str(e)[:200]}",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }, data_path)
 
 
 if __name__ == "__main__":
