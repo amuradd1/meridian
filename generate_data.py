@@ -105,10 +105,14 @@ async def fetch_news():
                 if r.status_code == 200:
                     root = ET.fromstring(r.text)
                     for item in root.findall(".//item")[:4]:
+                        raw_url = item.findtext("link", "")
+                        # Convert Google News RSS URL to browser-clickable URL
+                        # /rss/articles/ → /articles/ (JS redirect works in browser)
+                        clean_url = raw_url.replace("/rss/articles/", "/articles/") if raw_url else ""
                         articles.append({
                             "title": item.findtext("title", ""),
                             "source": item.findtext("source", "Unknown"),
-                            "url": item.findtext("link", ""),
+                            "url": clean_url,
                             "published": item.findtext("pubDate", ""),
                         })
             except Exception as e:
@@ -121,7 +125,12 @@ def call_llm(commodities, news):
     client = Anthropic(timeout=300.0)
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     trimmed_c = [{"name": c["name"], "price": c["price"], "unit": c["unit"], "change_24h": c["change_24h"], "change_7d": c["change_7d"]} for c in commodities]
-    trimmed_n = [{"title": n["title"], "source": n["source"], "url": n.get("url", "")} for n in news[:8]]
+    # Build news items with index for URL mapping (LLM must NOT generate URLs)
+    news_for_prompt = []
+    for i, n in enumerate(news[:8]):
+        news_for_prompt.append({"idx": i, "title": n["title"], "source": n["source"]})
+    # Keep a URL lookup for post-processing
+    news_url_lookup = {i: n.get("url", "") for i, n in enumerate(news[:8])}
 
     prompt = f"""You are a senior geopolitical and energy risk analyst producing a daily intelligence 
 brief for the Chief Procurement Officer (CPO) of a global tobacco company (cigarettes, heated 
@@ -138,8 +147,8 @@ Category teams handle operational actions. The CPO needs situational awareness o
 COMMODITY PRICES (live):
 {json.dumps(trimmed_c, indent=2)}
 
-NEWS HEADLINES (last 24-48 hours):
-{json.dumps(trimmed_n, indent=2)}
+NEWS HEADLINES (last 24-48 hours — reference by idx number):
+{json.dumps(news_for_prompt, indent=2)}
 
 Produce ONLY valid JSON (no markdown fences):
 {{
@@ -183,7 +192,7 @@ Produce ONLY valid JSON (no markdown fences):
     {{"name": "Malacca Strait", "status": "OPEN/RESTRICTED/CLOSED", "delay_hours": 0, "detail": "MAX 10 words"}}
   ],
   "top_stories": [
-    {{"headline": "...", "source": "...", "summary": "MAX 1 sentence framed through tobacco procurement impact", "relevance": "HIGH/MEDIUM/LOW", "url": "..."}}
+    {{"headline": "...", "source": "...", "summary": "MAX 1 sentence framed through tobacco procurement impact", "relevance": "HIGH/MEDIUM/LOW", "news_idx": <integer matching idx from NEWS HEADLINES>}}
   ],
   "timeline_events": [
     {{"date": "YYYY-MM-DD", "event": "short description with tobacco supply chain implications", "severity": "HIGH/MEDIUM/LOW"}}
@@ -200,7 +209,7 @@ RULES:
 - Use EXACT prices from data. Informational tone only — NO directives, NO 'should', NO 'recommend', NO 'action required'.
 - State facts, risks, and outlook.
 - The 'suggested_mitigation' field must describe GENERAL strategic approaches (e.g. 'supply base diversification', 'forward cover extension') — NEVER name specific countries, suppliers, or sourcing locations.
-- 3 top stories with URLs.
+- 3 top stories. Each top_story MUST include a 'news_idx' field matching one of the idx values from NEWS HEADLINES. Do NOT generate URLs — URLs are injected automatically from the news_idx mapping.
 - 5 timeline events.
 - Each executive_summary bullet must be MAX 1 sentence, sharp and data-driven. Do NOT prefix bullets with numbers or labels.
 - Container freight rates: estimate realistic current market rates based on commodity/shipping data and news context. Use USD values.
@@ -223,7 +232,7 @@ RULES:
         if text.endswith("```"): text = text[:-3].strip()
     # Try parsing, with fallback for truncated JSON
     try:
-        return json.loads(text)
+        result = json.loads(text)
     except json.JSONDecodeError as orig_err:
         print(f"  JSON parse error: {orig_err}")
         print(f"  Text length: {len(text)}, last 100 chars: {text[-100:]}")
@@ -236,7 +245,7 @@ RULES:
         while i < len(text):
             ch = text[i]
             if in_string:
-                if ch == '\\':
+                if ch == '\\':  # skip escaped character
                     i += 2
                     continue
                 if ch == '"':
@@ -257,8 +266,27 @@ RULES:
             i += 1
         if last_valid_end > 0:
             print(f"  Recovered JSON at position {last_valid_end}")
-            return json.loads(text[:last_valid_end])
-        raise orig_err
+            result = json.loads(text[:last_valid_end])
+        else:
+            raise orig_err
+
+    # Post-process: inject real URLs into top_stories from news_url_lookup
+    for story in result.get("top_stories", []):
+        idx = story.pop("news_idx", None)
+        if idx is not None and idx in news_url_lookup:
+            story["url"] = news_url_lookup[idx]
+        elif not story.get("url") or "google.com" not in story.get("url", ""):
+            # Fallback: search Google for the headline
+            headline = story.get("headline", "")
+            source = story.get("source", "")
+            story["url"] = f"https://www.google.com/search?q={headline}+{source}".replace(" ", "+")
+
+    # Validate all story URLs are non-empty
+    for story in result.get("top_stories", []):
+        if not story.get("url"):
+            story["url"] = "#"
+
+    return result
 
 
 async def main():
