@@ -88,11 +88,10 @@ function renderSupplyChainMap(chokeStatus) {
     .style("height", "auto")
     .style("background", "transparent");
 
-  // Projection — covers Suez (30.5N) to Cape (-34.4S), Malacca (101.5E) to W.Med (-10W)
-  // Center shifted further north; reduced scale so Suez+Hormuz labels have room at top
+  // Projection — compact view: all 4 chokepoints + Cape route visible in 280px height
   var projection = d3.geoMercator()
-    .center([48, 10])
-    .scale(width / 4.8)
+    .center([52, 8])
+    .scale(width / 5.5)
     .translate([width / 2, height / 2]);
 
   var path = d3.geoPath().projection(projection);
