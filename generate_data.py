@@ -242,19 +242,30 @@ async def fetch_chokepoint_transit():
             pct_change_7d = ((avg_7d - baseline_avg) / baseline_avg * 100) if baseline_avg > 0 else 0
 
             # Derive status from transit volume drop
-            # Use 7d average to smooth out daily noise
-            if pct_change_7d <= -50:
-                status = "CLOSED"
-                delay_hours = 168  # ~7 days rerouting
-            elif pct_change_7d <= -25:
-                status = "RESTRICTED"
-                delay_hours = max(24, int(abs(pct_change_7d) * 1.5))
-            elif pct_change_7d <= -15:
-                status = "RESTRICTED"
-                delay_hours = max(6, int(abs(pct_change_7d) * 0.8))
+            # Use BOTH 7d average (smoothed) and latest day (acute signal)
+            # Take the worse of the two to avoid missing sudden drops
+            def derive_status(pct):
+                if pct <= -50:
+                    return "CLOSED", 168
+                elif pct <= -25:
+                    return "RESTRICTED", max(24, int(abs(pct) * 1.5))
+                elif pct <= -15:
+                    return "RESTRICTED", max(6, int(abs(pct) * 0.8))
+                else:
+                    return "OPEN", 0
+
+            status_7d, delay_7d = derive_status(pct_change_7d)
+            status_latest, delay_latest = derive_status(pct_change)
+
+            # Take the worse signal (latest day can catch acute disruptions
+            # that the 7d average hasn't absorbed yet)
+            STATUS_ORDER = {"OPEN": 0, "RESTRICTED": 1, "CLOSED": 2}
+            if STATUS_ORDER.get(status_latest, 0) > STATUS_ORDER.get(status_7d, 0):
+                status = status_latest
+                delay_hours = delay_latest
             else:
-                status = "OPEN"
-                delay_hours = 0
+                status = status_7d
+                delay_hours = delay_7d
 
             # Container-specific stats
             containers = [r.get("n_container", 0) for r in records]
@@ -622,7 +633,8 @@ WRITING QUALITY:
                 # Inject PortWatch KPIs for frontend display
                 cp["transit_latest"] = pw["latest_transits"]
                 cp["transit_baseline"] = pw["baseline_avg_30d"]
-                cp["transit_pct_change"] = pw["pct_change_7d_vs_baseline"]
+                cp["transit_pct_change"] = pw["pct_change_vs_baseline"]  # latest day vs baseline (acute signal)
+                cp["transit_pct_change_7d"] = pw["pct_change_7d_vs_baseline"]  # 7d avg vs baseline (smoothed)
                 cp["transit_7d_avg"] = pw["avg_7d"]
                 cp["transit_containers"] = pw["latest_containers"]
                 cp["transit_tankers"] = pw["latest_tankers"]

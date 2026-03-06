@@ -643,6 +643,14 @@ html, body { height: 100%; overflow: hidden; margin: 0; }
   font-style: italic;
 }
 
+.transit-secondary {
+  font-size: 0.5625rem;
+  color: var(--color-text-faint);
+  margin-top: var(--space-1);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ─── Timeline ─── */
 .timeline {
   display: flex;

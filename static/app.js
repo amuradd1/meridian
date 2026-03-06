@@ -293,7 +293,8 @@ function renderChokepoints(chokepoints) {
     var statusLower = (cp.status || 'open').toLowerCase();
     var statusClass = 'status-' + statusLower;
     var hasTransit = cp.transit_latest != null;
-    var pctChange = cp.transit_pct_change || 0;
+    var pctChange = cp.transit_pct_change || 0;  // latest day vs baseline
+    var pctChange7d = cp.transit_pct_change_7d || 0;  // 7d avg vs baseline
     var pctClass = pctChange <= -25 ? 'change-negative' : (pctChange <= -15 ? 'change-positive' : 'change-flat');
     var pctSign = pctChange > 0 ? '+' : '';
 
@@ -307,15 +308,17 @@ function renderChokepoints(chokepoints) {
 
     // PortWatch transit KPIs
     if (hasTransit) {
+      var pct7dSign = pctChange7d > 0 ? '+' : '';
+      var pct7dClass = pctChange7d <= -25 ? 'change-negative' : (pctChange7d <= -15 ? 'change-positive' : 'change-flat');
       html += '<div class="chokepoint-transit">' +
         '<div class="transit-kpis">' +
           '<div class="transit-kpi">' +
             '<span class="transit-kpi-value">' + cp.transit_latest + '</span>' +
-            '<span class="transit-kpi-label">Transits</span>' +
+            '<span class="transit-kpi-label">Latest Day</span>' +
           '</div>' +
           '<div class="transit-kpi">' +
             '<span class="transit-kpi-value ' + pctClass + '">' + pctSign + pctChange.toFixed(1) + '%</span>' +
-            '<span class="transit-kpi-label">vs 30d Avg</span>' +
+            '<span class="transit-kpi-label">vs Baseline</span>' +
           '</div>' +
           '<div class="transit-kpi">' +
             '<span class="transit-kpi-value">' + (cp.transit_containers || 0) + '</span>' +
@@ -326,7 +329,12 @@ function renderChokepoints(chokepoints) {
             '<span class="transit-kpi-label">Tankers</span>' +
           '</div>' +
         '</div>' +
-        '<div class="transit-source">IMF PortWatch · ' + (cp.transit_date || '') + '</div>' +
+        '<div class="transit-secondary">' +
+          '30d avg: ' + Math.round(cp.transit_baseline || 0) + ' &middot; ' +
+          '7d avg: ' + Math.round(cp.transit_7d_avg || 0) +
+          ' (<span class="' + pct7dClass + '">' + pct7dSign + pctChange7d.toFixed(1) + '%</span>)' +
+        '</div>' +
+        '<div class="transit-source">IMF PortWatch &middot; ' + (cp.transit_date || '') + '</div>' +
       '</div>';
     }
 
