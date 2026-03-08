@@ -692,15 +692,16 @@ function fetchIntelligence() {
       });
     })
     .then(function(data) {
-      if (data.status === 'generating') {
-        // Still generating, retry in 10s
-        setTimeout(fetchIntelligence, 10000);
-        return;
-      }
-
       if (data.status === 'error') {
         loadingEl.innerHTML = '<div class="card" style="text-align:center;padding:var(--space-8)"><p style="color:var(--color-risk-high)">Error loading data: ' + (data.message || 'Unknown error') + '</p><p style="color:var(--color-text-faint);margin-top:var(--space-2)">Retrying in 30 seconds...</p></div>';
         setTimeout(fetchIntelligence, 30000);
+        return;
+      }
+
+      if (data.status !== 'ok') {
+        // Any non-ok, non-error status (generating, initializing, etc.) — retry
+        loadingEl.innerHTML = '<div class="card" style="text-align:center;padding:var(--space-8)"><p style="color:var(--color-text-muted)">Generating intelligence data...</p><p style="color:var(--color-text-faint);margin-top:var(--space-2)">First load after deploy takes 30–60 seconds. Retrying automatically.</p></div>';
+        setTimeout(fetchIntelligence, 10000);
         return;
       }
 

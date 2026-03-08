@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Generate initial data placeholder (LLM call happens at runtime)
-RUN echo '{"status":"initializing","message":"Data generation in progress..."}' > data.json
+RUN echo '{"status":"generating","message":"Intelligence data is being generated. Please wait..."}' > data.json
 
 # Expose port (Railway injects PORT env var)
 EXPOSE 8000
