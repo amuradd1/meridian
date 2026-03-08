@@ -865,15 +865,162 @@ def atomic_write_json(data: dict, path: str):
             json.dump(data, f, indent=2)
 
 
-async def main():
-    data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
+# ═══════════════════════════════════════════════════════════════════════════════
+# SPLIT REFRESH ARCHITECTURE
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. price_refresh()  — Every 4 hours. Free API calls only (Yahoo, PortWatch,
+#                       FBX, Google News). Updates commodity prices, chokepoint
+#                       transits, freight rates, and news in data.json while
+#                       PRESERVING the existing intelligence analysis.
+#
+# 2. full_refresh()   — Daily at 07:30 UK time. Runs price_refresh() first,
+#                       then calls the LLM to regenerate the intelligence
+#                       analysis. Stamps intelligence_timestamp so the app
+#                       shows when the analysis was produced.
+#
+# This means prices stay fresh (≤4h lag) while the LLM is only called once
+# per day — controlling Anthropic costs and reducing hallucination risk.
+# ═══════════════════════════════════════════════════════════════════════════════
 
-    # ── Validate Anthropic API key before expensive fetches ──
+
+async def _fetch_all_sources():
+    """Fetch all external data sources (no LLM). Returns dict of results."""
+    print("Fetching commodity prices...")
+    commodities = await fetch_commodities()
+    print(f"  Got {len(commodities)} commodities")
+    for c in commodities:
+        print(f"    {c['name']}: {c['price']} {c['unit']} (24h: {c['change_24h']}%, 7d: {c['change_7d']}%)")
+
+    print("Fetching chokepoint transit data (IMF PortWatch)...")
+    chokepoint_data = await fetch_chokepoint_transit()
+
+    print("Fetching FBX container freight rates...")
+    fbx_rates = await fetch_fbx_rates()
+    if fbx_rates:
+        print(f"  Got {len(fbx_rates)} FBX lane rates")
+    else:
+        print("  FBX: No rates fetched — LLM will estimate all routes")
+
+    print("Fetching news...")
+    news = await fetch_news()
+    print(f"  Got {len(news)} articles")
+
+    return {
+        "commodities": commodities,
+        "chokepoint_data": chokepoint_data,
+        "fbx_rates": fbx_rates,
+        "news": news,
+    }
+
+
+async def price_refresh():
+    """Lightweight refresh: update prices, freight, chokepoints, news.
+    Preserves existing intelligence analysis from the last LLM run.
+    Called every 4 hours."""
+    data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
+    print("[PRICE-REFRESH] Starting price-only refresh...")
+
+    try:
+        sources = await _fetch_all_sources()
+        commodities = sources["commodities"]
+        chokepoint_data = sources["chokepoint_data"]
+        fbx_rates = sources["fbx_rates"]
+        news = sources["news"]
+
+        # Guard: if ALL sources failed, don't overwrite
+        if not commodities and not chokepoint_data and not news:
+            print("[PRICE-REFRESH] All sources failed — keeping existing data.json")
+            return
+
+        # Load existing data to preserve intelligence
+        prev = load_previous_data()
+        if prev and prev.get("status") == "ok":
+            # Update only the price/market data fields
+            prev["commodities"] = commodities if commodities else prev.get("commodities", [])
+            prev["timestamp"] = datetime.now(timezone.utc).isoformat()
+            prev["raw_news_count"] = len(news) if news else prev.get("raw_news_count", 0)
+            # intelligence, intelligence_timestamp stay untouched
+
+            # Update FBX rates inside intelligence if we have new ones
+            if fbx_rates and prev.get("intelligence"):
+                fbx_lookup = {fr["route"]: fr for fr in fbx_rates}
+                for entry in prev["intelligence"].get("container_freight_rates", []):
+                    route_name = entry.get("route", "")
+                    if route_name in fbx_lookup:
+                        fbx = fbx_lookup[route_name]
+                        entry["rate_20ft"] = fbx["rate_20ft"]
+                        entry["rate_40ft"] = fbx["rate_40ft"]
+                        entry["change_7d"] = fbx["change_7d"]
+                        entry["source"] = "FBX"
+                        if fbx.get("history_weekly"):
+                            entry["history_weekly"] = fbx["history_weekly"]
+
+            # Update chokepoint transit data inside intelligence
+            if chokepoint_data and prev.get("intelligence"):
+                for cp in prev["intelligence"].get("chokepoint_status", []):
+                    cp_name = cp.get("name", "")
+                    if cp_name in chokepoint_data:
+                        pw = chokepoint_data[cp_name]
+                        cp["status"] = pw["status"]
+                        cp["delay_hours"] = pw["delay_hours"]
+                        cp["transit_latest"] = pw["latest_transits"]
+                        cp["transit_baseline"] = pw["baseline_avg_30d"]
+                        cp["transit_pct_change"] = pw["pct_change_vs_baseline"]
+                        cp["transit_pct_change_7d"] = pw["pct_change_7d_vs_baseline"]
+                        cp["transit_7d_avg"] = pw["avg_7d"]
+                        cp["transit_containers"] = pw["latest_containers"]
+                        cp["transit_tankers"] = pw["latest_tankers"]
+                        cp["transit_date"] = pw["latest_date"]
+                        cp["transit_history_7d"] = pw["history_7d"]
+                        cp["alert_level"] = pw.get("alert_level")
+                        cp["alert_event"] = pw.get("alert_event")
+                        cp["reroute_active"] = pw.get("reroute_active", False)
+                        cp["reroute_via"] = pw.get("reroute_via")
+                        cp["reroute_days_low"] = pw.get("reroute_days_low")
+                        cp["reroute_days_high"] = pw.get("reroute_days_high")
+                        cp["reroute_note"] = pw.get("reroute_note")
+
+                # Recompute chokepoint-derived KPIs
+                kpi = prev["intelligence"].get("kpi_summary", {})
+                chokes = prev["intelligence"].get("chokepoint_status", [])
+                disrupted_count = sum(1 for c in chokes if c.get("status", "OPEN").upper() in ("DISRUPTED", "SEVERELY DISRUPTED"))
+                kpi["active_chokepoint_disruptions"] = disrupted_count
+                delays = [c.get("delay_hours", 0) for c in chokes if c.get("delay_hours", 0) > 0]
+                kpi["avg_shipping_delay_days"] = round(sum(delays) / len(delays) / 24, 0) if delays else 0
+                prev["intelligence"]["kpi_summary"] = kpi
+
+            atomic_write_json(prev, data_path)
+            print(f"[PRICE-REFRESH] Updated prices in data.json (intelligence preserved)")
+        else:
+            # No previous data — this shouldn't happen in normal operation,
+            # but handle gracefully. Write a minimal data file so the app works.
+            print("[PRICE-REFRESH] No existing data.json — writing prices only")
+            atomic_write_json({
+                "status": "ok",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "commodities": commodities,
+                "intelligence": {},
+                "raw_news_count": len(news),
+                "_note": "Price-only refresh — intelligence analysis pending next LLM run",
+            }, data_path)
+
+    except Exception as e:
+        print(f"[PRICE-REFRESH] Error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+async def full_refresh():
+    """Full refresh: fetch all sources + call LLM for intelligence analysis.
+    Called daily at 07:30 UK time."""
+    data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
+    print("[FULL-REFRESH] Starting full intelligence refresh...")
+
+    # Validate Anthropic API key
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key or len(api_key) < 10:
         error_msg = "ANTHROPIC_API_KEY is missing or invalid"
         print(f"  FATAL: {error_msg}")
-        # Write error state so dashboard shows a message instead of spinning forever
         atomic_write_json({
             "status": "error",
             "message": error_msg,
@@ -882,27 +1029,13 @@ async def main():
         return
 
     try:
-        print("Fetching commodity prices...")
-        commodities = await fetch_commodities()
-        print(f"  Got {len(commodities)} commodities")
-        for c in commodities:
-            print(f"    {c['name']}: {c['price']} {c['unit']} (24h: {c['change_24h']}%, 7d: {c['change_7d']}%)")
+        sources = await _fetch_all_sources()
+        commodities = sources["commodities"]
+        chokepoint_data = sources["chokepoint_data"]
+        fbx_rates = sources["fbx_rates"]
+        news = sources["news"]
 
-        print("Fetching chokepoint transit data (IMF PortWatch)...")
-        chokepoint_data = await fetch_chokepoint_transit()
-
-        print("Fetching FBX container freight rates...")
-        fbx_rates = await fetch_fbx_rates()
-        if fbx_rates:
-            print(f"  Got {len(fbx_rates)} FBX lane rates")
-        else:
-            print("  FBX: No rates fetched — LLM will estimate all routes")
-
-        print("Fetching news...")
-        news = await fetch_news()
-        print(f"  Got {len(news)} articles")
-
-        # ── Guard: if ALL external sources failed, carry forward previous data ──
+        # Guard: if ALL external sources failed, carry forward previous data
         if not commodities and not chokepoint_data and not news:
             print("  WARNING: All external data sources failed")
             prev = load_previous_data()
@@ -912,7 +1045,6 @@ async def main():
                 atomic_write_json(prev, data_path)
                 return
             else:
-                # No previous data either — write error
                 atomic_write_json({
                     "status": "error",
                     "message": "All data sources unavailable and no previous data to carry forward",
@@ -931,10 +1063,11 @@ async def main():
             marker = " (held — awaiting confirmation)" if consec > 0 else ""
             print(f"    {cat['name']:45s} Risk: {cat.get('risk','?')}{marker}")
 
+        now = datetime.now(timezone.utc)
         output = {
             "status": "ok",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "next_refresh": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
+            "timestamp": now.isoformat(),
+            "intelligence_timestamp": now.isoformat(),
             "commodities": commodities,
             "intelligence": intelligence,
             "raw_news_count": len(news),
@@ -948,13 +1081,12 @@ async def main():
         }
 
         atomic_write_json(output, data_path)
-        print(f"Saved to data.json ({len(json.dumps(output))} bytes)")
+        print(f"[FULL-REFRESH] Saved to data.json ({len(json.dumps(output))} bytes)")
 
     except Exception as e:
-        print(f"  CRITICAL ERROR in data generation: {e}")
+        print(f"  CRITICAL ERROR in full refresh: {e}")
         import traceback
         traceback.print_exc()
-        # Try to carry forward previous data
         prev = load_previous_data()
         if prev and prev.get("status") == "ok":
             print("  Carrying forward previous data.json after crash")
@@ -966,6 +1098,12 @@ async def main():
                 "message": f"Data generation failed: {type(e).__name__}: {str(e)[:200]}",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }, data_path)
+
+
+async def main():
+    """Entry point: runs a full refresh (prices + LLM intelligence).
+    Used on startup and can be called directly: python generate_data.py"""
+    await full_refresh()
 
 
 if __name__ == "__main__":

@@ -106,7 +106,7 @@ function renderKPIStrip(intel) {
   container.innerHTML = html;
 }
 
-function renderExecBanner(intel, timestamp, nextRefresh) {
+function renderExecBanner(intel, timestamp, nextRefresh, intelligenceTimestamp) {
   var summary = document.getElementById('execSummary');
   var badge = document.getElementById('riskBadge');
   var label = document.getElementById('riskLabel');
@@ -131,8 +131,13 @@ function renderExecBanner(intel, timestamp, nextRefresh) {
   dot.className = 'risk-dot ' + risk;
   label.textContent = (intel.overall_risk || 'MEDIUM') + ' RISK';
 
-  tsLabel.textContent = 'Updated: ' + formatTime(timestamp);
-  nrLabel.textContent = 'Next refresh: ' + formatTime(nextRefresh);
+  tsLabel.textContent = 'Prices updated: ' + formatTime(timestamp);
+  // Show intelligence analysis timestamp if available
+  if (intelligenceTimestamp) {
+    nrLabel.textContent = 'Analysis generated: ' + formatTime(intelligenceTimestamp);
+  } else {
+    nrLabel.textContent = 'Next refresh: ' + formatTime(nextRefresh);
+  }
 }
 
 function drawSparkline(canvasId, dataPoints, isPositive) {
@@ -521,7 +526,7 @@ function renderAnalystSentiment(sentiment) {
   container.innerHTML = html;
 }
 
-function renderSources(timestamp) {
+function renderSources(timestamp, intelligenceTimestamp) {
   var body = document.getElementById('sourcesBody');
   if (!body) { return; }
 
@@ -529,6 +534,12 @@ function renderSources(timestamp) {
   if (timestamp) {
     try { tsStr = new Date(timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }); }
     catch (e) { tsStr = timestamp; }
+  }
+
+  var intelTsStr = '—';
+  if (intelligenceTimestamp) {
+    try { intelTsStr = new Date(intelligenceTimestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }); }
+    catch (e) { intelTsStr = intelligenceTimestamp; }
   }
 
   var html = '<div class="sources-grid" style="padding-top:var(--space-3)">' +
@@ -541,7 +552,8 @@ function renderSources(timestamp) {
     '<div class="source-item"><span class="source-item-label">Map Data:</span> <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener noreferrer">Natural Earth</a> via world-atlas</div>' +
   '</div>' +
   '<div class="sources-meta">' +
-    '<span>Data generated: ' + tsStr + '</span>' +
+    '<span>Prices updated: ' + tsStr + '</span>' +
+    '<span>Intelligence analysis: ' + intelTsStr + '</span>' +
     '<span>Model: Claude (Anthropic)</span>' +
   '</div>';
 
@@ -605,7 +617,7 @@ function fetchIntelligence() {
 
       // Render all sections
       renderKPIStrip(intel);
-      renderExecBanner(intel, data.timestamp, data.next_refresh);
+      renderExecBanner(intel, data.timestamp, data.next_refresh, data.intelligence_timestamp);
       renderCommodities(data.commodities);
       renderNews(intel.top_stories);
       renderTimeline(intel.timeline_events);
@@ -614,7 +626,7 @@ function fetchIntelligence() {
       renderProcurement(intel.procurement_categories);
       renderCOGSOutlook(intel.cogs_outlook);
       renderAnalystSentiment(intel.analyst_sentiment);
-      renderSources(data.timestamp);
+      renderSources(data.timestamp, data.intelligence_timestamp);
 
       // Show dashboard first
       loadingEl.style.display = 'none';

@@ -45,7 +45,7 @@ PAGE_W, PAGE_H = A4
 MARGIN = 10 * mm
 TOP_MARGIN = 8 * mm
 BOTTOM_MARGIN = 6 * mm
-FOOTER_ZONE = 9 * mm  # reserved for footer at bottom
+FOOTER_ZONE = 11 * mm  # reserved for footer at bottom (2-line footer)
 
 
 def get_styles():
@@ -118,15 +118,26 @@ def risk_bg(level):
 def _draw_footer(canvas, doc, data):
     """Draw footer directly on canvas — pinned to bottom of page."""
     timestamp = data.get("timestamp", "")
+    intel_timestamp = data.get("intelligence_timestamp", "")
     gen_time = ""
+    intel_time = ""
     if timestamp:
         try:
             dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
             gen_time = dt.strftime("%d %b %Y %H:%M UTC")
         except Exception:
             gen_time = timestamp
+    if intel_timestamp:
+        try:
+            dt = datetime.fromisoformat(intel_timestamp.replace("Z", "+00:00"))
+            intel_time = dt.strftime("%d %b %Y %H:%M UTC")
+        except Exception:
+            intel_time = intel_timestamp
 
-    footer_text = f"Sources: Yahoo Finance (incl. JKM), IMF PortWatch (AIS transit), Freightos (FBX), Google News, Claude AI (Anthropic)  |  Generated {gen_time}"
+    footer_line1 = f"Sources: Yahoo Finance (incl. JKM), IMF PortWatch (AIS transit), Freightos (FBX), Google News, Claude AI (Anthropic)"
+    footer_line2 = f"Prices updated: {gen_time}"
+    if intel_time:
+        footer_line2 += f"  |  Intelligence analysis: {intel_time}"
 
     canvas.saveState()
     # Draw thin rule
@@ -134,11 +145,12 @@ def _draw_footer(canvas, doc, data):
     canvas.setStrokeColor(BORDER_GRAY)
     canvas.setLineWidth(0.3)
     canvas.line(MARGIN, y_rule, PAGE_W - MARGIN, y_rule)
-    # Draw text centered
-    canvas.setFont("Helvetica", 6)
+    # Draw text centered — two lines
+    canvas.setFont("Helvetica", 5.5)
     canvas.setFillColor(TEXT_FAINT)
-    text_y = BOTTOM_MARGIN + FOOTER_ZONE - 5 * mm
-    canvas.drawCentredString(PAGE_W / 2, text_y, footer_text)
+    text_y = BOTTOM_MARGIN + FOOTER_ZONE - 4.5 * mm
+    canvas.drawCentredString(PAGE_W / 2, text_y, footer_line1)
+    canvas.drawCentredString(PAGE_W / 2, text_y - 7, footer_line2)
     canvas.restoreState()
 
 
