@@ -27,6 +27,70 @@ var sparkCharts = [];
 // ─── Init Lucide Icons ───
 lucide.createIcons();
 
+// ─── Schedule Constants ───
+var PRICE_REFRESH_HOURS = 4;
+var INTEL_REFRESH_HOUR_UTC = 7;   // 07:30 UTC (winter) / 06:30 UTC (summer)
+var INTEL_REFRESH_MINUTE = 30;
+
+/**
+ * Compute next intelligence refresh time (07:30 UK time).
+ * Accounts for BST (last Sun Mar – last Sun Oct).
+ */
+function getNextIntelRefresh() {
+  // Use Intl to get current UK offset reliably
+  var now = new Date();
+  // Format current time in Europe/London to get the offset
+  var ukStr = now.toLocaleString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hour12: false });
+  var ukParts = ukStr.split(':');
+  var ukHour = parseInt(ukParts[0], 10);
+  var ukMin = parseInt(ukParts[1], 10);
+  var ukTotalMin = ukHour * 60 + ukMin;
+  var utcTotalMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+  var ukOffsetMin = ukTotalMin - utcTotalMin;
+  // Handle day boundary
+  if (ukOffsetMin < -720) ukOffsetMin += 1440;
+  if (ukOffsetMin > 720) ukOffsetMin -= 1440;
+
+  // Target: 07:30 UK = (7*60+30 - ukOffsetMin) minutes in UTC
+  var targetUTCMin = 7 * 60 + 30 - ukOffsetMin;
+  var targetH = Math.floor(targetUTCMin / 60) % 24;
+  var targetM = targetUTCMin % 60;
+
+  var next = new Date(now);
+  next.setUTCHours(targetH, targetM, 0, 0);
+  if (next <= now) {
+    next.setUTCDate(next.getUTCDate() + 1);
+  }
+  return next;
+}
+
+/**
+ * Compute next price refresh (every 4h from midnight UTC).
+ */
+function getNextPriceRefresh() {
+  var now = new Date();
+  var h = now.getUTCHours();
+  var nextSlot = Math.ceil((h + 1) / PRICE_REFRESH_HOURS) * PRICE_REFRESH_HOURS;
+  var next = new Date(now);
+  next.setUTCHours(nextSlot % 24, 0, 0, 0);
+  if (nextSlot >= 24) {
+    next.setUTCDate(next.getUTCDate() + 1);
+  }
+  if (next <= now) {
+    next.setUTCHours(next.getUTCHours() + PRICE_REFRESH_HOURS);
+  }
+  return next;
+}
+
+function formatRefreshCountdown(target) {
+  var diff = target - new Date();
+  if (diff <= 0) return 'imminent';
+  var hrs = Math.floor(diff / 3600000);
+  var mins = Math.floor((diff % 3600000) / 60000);
+  if (hrs > 0) return '~' + hrs + 'h ' + mins + 'm';
+  return '~' + mins + 'm';
+}
+
 // ─── Helpers ───
 function formatChange(val) {
   if (val === null || val === undefined) { return '<span class="change-flat">—</span>'; }
@@ -111,8 +175,7 @@ function renderExecBanner(intel, timestamp, nextRefresh, intelligenceTimestamp) 
   var badge = document.getElementById('riskBadge');
   var label = document.getElementById('riskLabel');
   var dot = badge.querySelector('.risk-dot');
-  var tsLabel = document.getElementById('timestampLabel');
-  var nrLabel = document.getElementById('nextRefreshLabel');
+  var metaContainer = document.getElementById('execMetaTimestamps');
 
   // Handle both array (bullet) and string formats
   if (Array.isArray(intel.executive_summary)) {
@@ -131,12 +194,23 @@ function renderExecBanner(intel, timestamp, nextRefresh, intelligenceTimestamp) 
   dot.className = 'risk-dot ' + risk;
   label.textContent = (intel.overall_risk || 'MEDIUM') + ' RISK';
 
-  tsLabel.textContent = 'Prices updated: ' + formatTime(timestamp);
-  // Show intelligence analysis timestamp if available
+  // Build two-layer timestamp display
+  var nextPrice = getNextPriceRefresh();
+  var nextIntel = getNextIntelRefresh();
+
+  var tsHtml = '';
+  // Intelligence analysis line
   if (intelligenceTimestamp) {
-    nrLabel.textContent = 'Analysis generated: ' + formatTime(intelligenceTimestamp);
-  } else {
-    nrLabel.textContent = 'Next refresh: ' + formatTime(nextRefresh);
+    tsHtml += '<div class="ts-row"><span class="ts-icon">🧠</span> Analysis: ' + formatTime(intelligenceTimestamp) + '</div>';
+  }
+  // Price data line
+  tsHtml += '<div class="ts-row"><span class="ts-icon">📊</span> Prices: ' + formatTime(timestamp) + '</div>';
+  // Next refreshes
+  tsHtml += '<div class="ts-row ts-next">Next price update: ' + formatRefreshCountdown(nextPrice) + '</div>';
+  tsHtml += '<div class="ts-row ts-next">Next analysis: ' + formatRefreshCountdown(nextIntel) + '</div>';
+
+  if (metaContainer) {
+    metaContainer.innerHTML = tsHtml;
   }
 }
 
@@ -526,6 +600,24 @@ function renderAnalystSentiment(sentiment) {
   container.innerHTML = html;
 }
 
+function renderCardRefreshFooters(timestamp, intelligenceTimestamp) {
+  var nextPrice = getNextPriceRefresh();
+  var priceTs = formatTime(timestamp);
+  var countdown = formatRefreshCountdown(nextPrice);
+
+  var priceHtml = '<span class="refresh-updated">Updated: ' + priceTs + '</span>' +
+    '<span class="refresh-next">Refreshes every 4h · Next: ' + countdown + '</span>';
+
+  // Freight rates: show whether they're from the LLM analysis or live FBX
+  var freightHtml = '<span class="refresh-updated">Updated: ' + priceTs + '</span>' +
+    '<span class="refresh-next">Refreshes every 4h · Next: ' + countdown + '</span>';
+
+  var commEl = document.getElementById('commodityRefreshFooter');
+  var frEl = document.getElementById('freightRefreshFooter');
+  if (commEl) commEl.innerHTML = priceHtml;
+  if (frEl) frEl.innerHTML = freightHtml;
+}
+
 function renderSources(timestamp, intelligenceTimestamp) {
   var body = document.getElementById('sourcesBody');
   if (!body) { return; }
@@ -626,6 +718,7 @@ function fetchIntelligence() {
       renderProcurement(intel.procurement_categories);
       renderCOGSOutlook(intel.cogs_outlook);
       renderAnalystSentiment(intel.analyst_sentiment);
+      renderCardRefreshFooters(data.timestamp, data.intelligence_timestamp);
       renderSources(data.timestamp, data.intelligence_timestamp);
 
       // Show dashboard first
